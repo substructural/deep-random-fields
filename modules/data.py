@@ -1,256 +1,480 @@
+#---------------------------------------------------------------------------------------------------
+# data representation
 
 
-import os
-import glob
+from datetime import datetime
+
+import copy
+import numpy as N
+import theano as T
 import random
 
-import nibabel
-import matplotlib.pyplot as plot
-import math
-import numpy
+from geometry import cuboid, voxel
 
-from math import floor
+import pdb
+
+#---------------------------------------------------------------------------------------------------
+
+class Subject( object ) :
+
+
+    def __init__( self, subject_id, gender, pathology ) :
+
+        self.__subject_id = subject_id
+        self.__gender = gender
+        self.__pathology = pathology
+
+
+    @property
+    def subject_id( self ) : 
+
+        return self.__subject_id
+
+
+    @property
+    def gender( self ) : 
+
+        return self.__gender
+
+
+    @property
+    def pathology( self ) : 
+
+        return self.__pathology
+
+
+    def __str__( self ) :
+
+        return (
+            "subject-id    : " + str( self.subject_id ) + "\n" +
+            "gender        : " + str( self.gender ) + "\n" +
+            "pathology     : " + str( self.pathology ) + "\n" )
+    
+    
+
+#---------------------------------------------------------------------------------------------------
+
+class Aquisition( object ) :
+
+
+    def __init__( self, aquisition_id, subject, subject_age_at_aquisition ):
+
+        self.__aquisition_id = aquisition_id
+        self.__subject = subject
+        self.__subject_age_at_aquisition = subject_age_at_aquisition
+
+
+    def read_volume( self ) :
+
+        raise NotImplementedError()
+
+
+    @property
+    def aquisition_id( self ) :
+
+        return self.__aquisition_id
+    
+
+    @property
+    def subject( self ) : 
+
+        return self.__subject
+
+
+    @property
+    def subject_age_at_aquisition( self ) : 
+
+        return self.__subject_age_at_aquisition
+
+
+    def __str__( self ) :
+
+        return (
+            "aquisition-id : " + str( self.aquisition_id ) + "\n" +
+            str( self.subject ) + 
+            "age at scan   : " + str( self.subject_age_at_aquisition ) + "\n" )
 
 
 
-#-------------------------------------------------------------------------------
-
+#---------------------------------------------------------------------------------------------------
 
 class Volume( object ):
 
     
+    def __init__( self, image_data, label_data, mask_data ) :
+
+        self.__image_data = image_data
+        self.__label_data = label_data
+        self.__mask_data = mask_data
+
+    
     @property
-    def axial_data( self ):
-        pass
+    def images( self ) : 
 
-
-    def axial_image( self, z, relative_to_centre = False ):
-        centre = math.floor( self.axial_data.shape[ 2 ] / 2 )
-        i = centre + z if relative_to_centre else z
-        return self.axial_data[ :, :, i ]
-
-
-#-------------------------------------------------------------------------------
-
-
-class BasicVolume( Volume ):
-
-    def __init__( self, axial_data ):
-        self.__axial_data = axial_data
-        
-
-    @property
-    def axial_data( self ):
-        return self.__axial_data
-
-
-#-------------------------------------------------------------------------------
-
-
-class AnalyseFormatVolume( Volume ):
-
-
-    def __init__( self, case_id, file_path ):
-        self.__case_id = case_id
-        self.__file_path = file_path
-        self.__meta_data = []
-        self.__axial_data = []
+        return self.__image_data
 
 
     @property
-    def meta_data( self ):
-        if self.__meta_data == []:
-            self.__meta_data = nibabel.analyze.load( self.__file_path )
-        return self.__meta_data
+    def labels( self ) : 
+
+        return self.__label_data
 
 
     @property
-    def axial_data( self ):
-        if self.__axial_data == []:
-            raw_data = self.meta_data.get_data()
-            transposed_data = numpy.transpose( raw_data, ( 1, 0, 2, 3 ) )
-            x, y, z, _ = transposed_data.shape
-            self.__axial_data = transposed_data.reshape( ( x, y, z ) )
-        return self.__axial_data
+    def masks( self ) : 
+
+        return self.__mask_data
     
 
-#-------------------------------------------------------------------------------
-
-
-class OasisDataCase( object ):
-
-
-    def __init__( self, dataset_path, case_id ):
-
-        self.__case_id = case_id
-        self.__case_path = dataset_path + "/" + case_id
-        pattern = "_mpr_n?_anon_111_t88_masked_gfc"
-
-        input_path = self.__case_path + "/PROCESSED/MPRAGE/T88_111"
-        input_file_pattern = case_id + pattern + ".img"
-        input_files = glob.glob( input_path + "/" + input_file_pattern )
-        assert( len( input_files ) == 1 )
-        self.__input = AnalyseFormatVolume( case_id, input_files[ 0 ] )
-
-        label_path = self.__case_path + "/FSL_SEG/" 
-        label_file_pattern = case_id + pattern + "_fseg.img"
-        label_files = glob.glob( label_path + "/" + label_file_pattern )
-        assert( len( label_files ) == 1 )
-        self.__label = AnalyseFormatVolume( case_id, label_files[ 0 ] )
-
-        self.__mask = BasicVolume( self.__input.axial_data > 0 )
-        self.__shape = self.__mask.axial_data.shape
-        assert( self.__input.axial_data.shape == self.__shape )
-        assert( self.__label.axial_data.shape == self.__shape )
+    @property
+    def dimensions( self ) : 
+    
+        return self.masks.shape
 
 
     @property
-    def input( self ):
-        return self.__input
+    def centre( self ) :
+
+        minima, maxima = self.unmasked_bounds
+        d = maxima - minima
+        return geometry.voxel( minima + ( 0.5 * d ) )
 
 
     @property
-    def label( self ):
-        return self.__label
+    def unmasked_bounds( self ) : 
+
+        mask_reduced_in_x = N.any( self.masks, ( 0, 1 ) )
+        mask_reduced_in_y = N.any( self.masks, ( 0, 2 ) )
+        mask_reduced_in_z = N.any( self.masks, ( 1, 2 ) )
+
+        indices_of_unmasked_in_x = N.nonzero( mask_reduced_in_x )[ 0 ]
+        indices_of_unmasked_in_y = N.nonzero( mask_reduced_in_y )[ 0 ]
+        indices_of_unmasked_in_z = N.nonzero( mask_reduced_in_z )[ 0 ]
+
+        min_x = indices_of_unmasked_in_x[ 0 ]
+        min_y = indices_of_unmasked_in_y[ 0 ]
+        min_z = indices_of_unmasked_in_z[ 0 ]
+
+        max_x = indices_of_unmasked_in_x[ -1 ]
+        max_y = indices_of_unmasked_in_y[ -1 ]
+        max_z = indices_of_unmasked_in_z[ -1 ]
+
+        return cuboid( ( min_z, min_y, min_x ), ( max_z, max_y, max_x ) )
         
 
+
+#---------------------------------------------------------------------------------------------------
+
+class Dataset( object ) :
+
+
+    def __init__( self, aquisitions, training_count, validation_count, testing_count, random_seed ) : 
+
+        assert( len( aquisitions ) >= training_count + validation_count + testing_count )
+
+        subjects = [ s for s in set( [ a.subject.subject_id for a in aquisitions ] ) ]
+        aquisitions_for = lambda s : [ a for a in aquisitions if a.subject.subject_id == s ] 
+        aquisitions_by_subject = { s : aquisitions_for( s ) for s in subjects }
+
+        subsets = [ [], [], [] ]
+        targets = [ training_count, validation_count, testing_count ]
+
+        random.seed( random_seed )
+        for subject in random.sample( subjects, len( subjects ) ) :
+
+            aquisitions_to_add = aquisitions_by_subject[ subject ]
+            for subset in range( 0, 3 ) :
+
+                places_remaining = targets[ subset ] - len( subsets[ subset ] )
+                if places_remaining >= len( aquisitions_to_add ) :
+                    subsets[ subset ] += aquisitions_to_add
+                    break
+
+        self.__training_set = random.sample( subsets[ 0 ], len( subsets[ 0 ] ) )
+        self.__validation_set = random.sample( subsets[ 1 ], len( subsets[ 1 ] ) )
+        self.__testing_set = random.sample( subsets[ 2 ], len( subsets[ 2 ] ) )
+
+
     @property
-    def mask( self ):
-        return self.__mask
+    def training_set( self ) :
+
+        return self.__training_set
+
+    
+    @property
+    def validation_set( self ) :
+
+        return self.__validation_set
+
+
+    @property
+    def test_set( self ) :
+
+        return self.__testing_set
+
+
+
+#---------------------------------------------------------------------------------------------------
+
+class Batch( object ) :
+    
+
+    @staticmethod
+    def volumes_for_batch( aquisitions, batch_index, parameters ) :
+        
+        start = batch_index * parameters.volume_count 
+        end = ( batch_index + 1 ) * parameters.volume_count 
+        volumes = [ aquisition.read_volume() for aquisition in aquisitions[ start : end ] ]
+        return volumes
+
+
+    @staticmethod
+    def offsets( volume, parameters ) :
+
+        assert( len( parameters.patch_shape ) == 3 )
+
+        outer_bounds = volume.images.shape
+        inner_bounds = volume.unmasked_bounds if parameters.constrain_to_mask else outer_bounds
+        minimum = inner_bounds[ 0 ]
+        maximum = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) ) 
+        
+        grid = N.mgrid[
+            minimum[ 0 ] : maximum[ 0 ] + 1 : parameters.patch_stride,
+            minimum[ 1 ] : maximum[ 1 ] + 1 : parameters.patch_stride,
+            minimum[ 2 ] : maximum[ 2 ] + 1 : parameters.patch_stride ]
+
+        count = N.product( grid.shape[ 1:5 ] )
+        offsets = grid.reshape( 3, count ).T
+        return offsets
         
 
-    @property
-    def shape( self ):
-        return self.__shape
+    @staticmethod
+    def patches( volume_data, offsets_per_volume, parameters ) :
+
+        assert( len( parameters.patch_shape ) == 3 )
         
+        patches = N.array( [
+            volume_data[ volume_index ][ 
+                offsets[ 0 ] : offsets[ 0 ] + parameters.patch_shape[ 0 ],
+                offsets[ 1 ] : offsets[ 1 ] + parameters.patch_shape[ 1 ],
+                offsets[ 2 ] : offsets[ 2 ] + parameters.patch_shape[ 2 ] ]
+            for volume_index, offsets in offsets_per_volume ] )
 
-#-------------------------------------------------------------------------------
-
-
-def Voxel( v ) :
-    return numpy.array( v ).astype( numpy.int )
-
-
-#-------------------------------------------------------------------------------
-
-
-class Sample( object ):
-
-      
-    @staticmethod
-    def point_within_cuboid( minimum_vertex, maximum_vertex ):
-
-        x = random.randint( minimum_vertex[ 0 ], maximum_vertex[ 0 ] )
-        y = random.randint( minimum_vertex[ 1 ], maximum_vertex[ 1 ] )
-        z = random.randint( minimum_vertex[ 2 ], maximum_vertex[ 2 ] )
-        return (x, y, z)
-
-      
-    @staticmethod
-    def window_within_mask( window_shape, case ):
-
-        mask = case.mask.axial_data
-        span = Voxel( window_shape ) - Voxel(( 1, 1, 1 )) 
-        half_span = Voxel( span / 2 )
-
-        maximum_voxel = Voxel( mask.shape ) - Voxel(( 1, 1, 1 ))
-        maximum_extent = maximum_voxel - half_span
-        minimum_extent = half_span
-
-        while True:
-            ( x, y, z ) = Sample.point_within_cuboid( minimum_extent, maximum_extent )
-            if mask[ x, y, z ] :
-                centre = Voxel(( x, y, z ))
-                minimum_vertex = centre - half_span
-                maximum_vertex = minimum_vertex + span
-                return ( minimum_vertex, maximum_vertex )
+        return patches
 
 
-    @staticmethod
-    def window_within_masks( window_shape, cases ):
+    def __init__( self, aquisitions, batch_index, parameters, seed = None ) : 
 
-        N = len( cases )
-        n = random.randint( 0, N )
-        minimum_vertex, maximum_vertex = Sample.window_within_mask( window_shape, cases[ n ] )
+        volumes = Batch.volumes_for_batch( aquisitions, batch_index, parameters )
+        offsets_per_volume = [
+            ( i, offsets )
+            for i in range( 0, len( volumes ) )
+            for offsets in Batch.offsets( volumes[ i ], parameters ) ]
 
-        return ( n, minimum_vertex, maximum_vertex );
+        if seed is not None :
+            random.seed( seed )
+            random.shuffle( offsets_per_volume )
 
+        image_data = [ volume.images for volume in volumes ] 
+        self.__image_patches = Batch.patches( image_data, offsets_per_volume, parameters )
 
-    @staticmethod
-    def centre_of_window( window_shape ):
+        label_data = [ volume.labels for volume in volumes ] 
+        self.__label_patches = Batch.patches( label_data, offsets_per_volume, parameters )
 
-        return Voxel( Voxel( window_shape ) / 2 )
-
-
-    def __init__( self, cases, window_shape ):
-
-        ( case, min_vertex, max_vertex ) = Sample.window_within_masks( window_shape, cases )
-
-        x0, y0, z0 = min_vertex
-        xN, yN, zN = max_vertex + Voxel(( 1, 1, 1 ))
-
-        X, Y, Z = cases[ case ].shape
-        assert( x0 >= 0 and xN <= X )
-        assert( y0 >= 0 and yN <= Y )
-        assert( z0 >= 0 and zN <= Z )
-
-        x, y, z = Sample.centre_of_window( window_shape )
-        self.__centre = ( x, y, z )
-        self.__input = cases[ case ].input.axial_data[ x0:xN, y0:yN, z0:zN ]
-        self.__label = cases[ case ].label.axial_data[ x, y, z ]
+        mask_data = [ volume.masks for volume in volumes ] 
+        self.__mask_patches = Batch.patches( mask_data, offsets_per_volume, parameters )
 
 
     @property
-    def input( self ):
-        return self.__input
+    def image_patches( self ) :
+
+        return self.__image_patches
 
 
     @property
-    def label( self ):
-        return self.__label
+    def label_patches( self ) : 
+
+        return self.__label_patches
+
+    
+    @property
+    def masks_patches( self ) : 
+
+        return self.__mask_patches
+
+
+#---------------------------------------------------------------------------------------------------
+
+class Loader( object ) :
+
+
+    @staticmethod
+    def dense_to_patch_based_labels( dense_labels ) :
+
+        shape = dense_labels.shape
+        all_instances = slice( 0, shape[ 0 ], 1 )
+        offset_to_centre = tuple( int( d / 2 ) for d in shape[ 1 : ] )
+        patch_labels = dense_labels[ ( all_instances, ) + offset_to_centre ]
+        return patch_labels
+    
+
+    @staticmethod
+    def dense_labels_in_centered_window( dense_labels, margin ) :
+
+        shape = dense_labels.shape
+        all_instances = slice( 0, shape[ 0 ], 1 )
+        window = tuple( slice( margin, d - margin, 1 ) for d in shape[ 1: ] )
+
+        labels_in_window = dense_labels[ ( all_instances, ) + window ]
+        return labels_in_window
+    
+
+    @staticmethod
+    def labels_to_distribution( labels, label_count ) :
+
+        batch_size = labels.shape[ 0 ]
+        data_shape = labels.shape[ 1 : ]
+        distribution_shape = ( label_count, batch_size, ) + data_shape 
+        distribution = N.zeros( distribution_shape ).astype( T.config.floatX )
+
+        for i in range( 0, label_count ) :
+            distribution[ i ][ labels == i ] = 1.0
+
+        permutation = [ i for i in range( 1, len( distribution_shape ) ) ] + [ 0 ]
+        return N.transpose( distribution, permutation )
+    
+
+    @staticmethod
+    def per_patch_distribution_over_labels( batch, label_count ) :
+        
+        labels = Loader.dense_to_patch_based_labels( batch.label_patches )
+        label_distribution = Loader.labels_to_distribution( labels, label_count )
+        return ( batch.image_patches, label_distribution )
+
+
+    @staticmethod
+    def dense_distribution_over_labels( batch, window_margin, label_count ) :
+        
+        labels = Loader.dense_labels_in_centered_window( batch.label_patches, window_margin )
+        label_distribution = Loader.labels_to_distribution( labels, label_count )
+        return ( batch.image_patches, label_distribution )
+
+
+    def __init__( self, dataset, training_set_parameters, label_count, window_margin = 0 ) :
+
+        self.__label_count = label_count
+        self.__dataset = dataset
+        self.__training_set_parameters = training_set_parameters
+        self.__validation_set_parameters = (
+            training_set_parameters.with_patch_stride( 1 ).with_volume_count( len( dataset.validation_set ) ) )
 
 
     @property
-    def centre( self ):
-        return self.__centre
+    def label_count( self ) :
 
-
-#-------------------------------------------------------------------------------
-
-
-class OasisDataSet( object ):
-
-
-    def __init__( self, root_path, max_cases, random_seed ):
-
-        self.__root = root_path
-        self.__case_ids = os.listdir( root_path )
-
-        cases_found = len( self.__case_ids )
-        assert( cases_found > 0 )
-
-        cases_to_read = min( cases_found, max_cases )        
-        self.__cases = [ OasisDataCase( root_path, id ) for id in self.__case_ids ]
-
-        numpy.random.seed( random_seed )
-        self.__random_state = numpy.random.get_state()
+        return self.__label_count
 
 
     @property
-    def cases( self ):
+    def dataset( self ) :
 
-        return self.__cases
-
-
-    def sample( self, count, window_shape ):
-
-        random.setstate( random_state )
-        return [ Sample( self.cases, window_shape ) for i in range( 0, count ) ] 
-        self.__random_state = numpy.random.get_state()
+        return self.__dataset
 
 
+    def training_batch( self, index ) :
 
-#-------------------------------------------------------------------------------
+        return Batch( self.dataset.training_set, index, self.__training_set_parameters )
+
+
+    def validation_set( self ) :
+
+        return Batch( self.dataset.validation_set, 0, self.__validation_set_parameters )
+    
+
+    def load_training_batch_with_per_patch_distribution_over_labels( self, batch_index ) :
+
+        return Loader.per_patch_distribution_over_labels( self.training_batch( batch_index ), self.label_count )
+
+
+    def load_training_batch_with_dense_distribution_over_labels( self, batch_index ) :
+
+        return Loader.dense_distribution_over_labels(
+            self.training_batch( batch_index ), self.parameters.window_margin, self.label_count )
+
+
+    def load_validation_set_with_per_patch_distribution_over_labels( self ):
+
+        return Loader.per_patch_distribution_over_labels( self.validation_set(), self.label_count )
+
+
+    def load_validation_set_with_dense_distribution_over_labels( self ) :
+
+        return Loader.dense_distribution_over_labels(
+            self.validation_set(), self.parameters.window_margin, self.label_count )
+
+
+    def load_validation_set_with_dense_labels( self ) :
+
+        validation_set = self.validation_set()
+        labels = Loader.labels_in_centered_window( validation_set.label_patches, self.parameters.window_margin )
+        return ( validation_set.image_patches, labels )
 
 
 
+#---------------------------------------------------------------------------------------------------
+
+class Parameters( object ) :
+
+
+    def __init__(
+            self,
+            volume_count,
+            patch_shape = ( 1, 1 ),
+            patch_stride = 1,
+            window_margin = 0,
+            constrain_to_mask = True,
+            use_dense_labels = True ) :
+
+        self.volume_count = volume_count
+        self.patch_shape = patch_shape
+        self.patch_stride = patch_stride
+        self.constrain_to_mask = constrain_to_mask
+        self.window_margin = 0
+
+
+    def with_volume_count( self, batch_volume_count ) :
+
+        other = copy.copy( self )
+        other.batch_volume_count = batch_volume_count
+        return other
+
+
+    def with_patch_shape( self, patch_shape ) :
+
+        other = copy.copy( self )
+        other.patch_shape = patch_shape
+        return other
+
+
+    def with_patch_stride( self, patch_stride ) :
+
+        other = copy.copy( self )
+        other.patch_stride = patch_stride
+        return other
+
+
+    def with_constrain_to_mask( self, constrain_to_mask ) :
+
+        other = copy.copy( self )
+        other.constrain_to_mask = constrain_to_mask
+        return other
+
+
+    def with_window_margin( self, window_margin ) :
+
+        other = copy.copy( self )
+        other.window_margin = window_margin
+        return other
+
+
+#---------------------------------------------------------------------------------------------------
