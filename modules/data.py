@@ -2,6 +2,7 @@
 # data representation
 
 
+
 from datetime import datetime
 
 import copy
@@ -229,12 +230,31 @@ class Batch( object ) :
 
 
     @staticmethod
-    def offsets( volume, parameters ) :
+    def normalised_bounds_of_unmasked_regions( volumes ) :
+
+        count = bounds[ 0 ]
+        bounds = numpy.array( [ volume.unmasked_bounds for volume in volumes ] )
+
+        minimum = numpy.amin( bounds, axis=0 )[ 0 ]
+        maximum = numpy.amax( bounds, axis=0 )[ 1 ]
+        span = maximum - minimum
+
+        unnormalised_minima = bounds[ :, 0, : ]
+        unnormalised_maxima = bounds[ :, 1, : ]
+        centres = 0.5 * ( unnormalised_minima + unnormalied_maxima )
+
+        normalised_minima = centres - ( 0.5 * span )
+        normalised_maxima = centres + ( 0.5 * span )
+        return numpy.array( ( normalised_minima, normalised_maxima ) )
+    
+
+    @staticmethod
+    def offsets( volume, unmasked_bounds, parameters ) :
 
         assert( len( parameters.patch_shape ) == 3 )
 
         outer_bounds = volume.images.shape
-        inner_bounds = volume.unmasked_bounds if parameters.constrain_to_mask else outer_bounds
+        inner_bounds = unmasked_bounds if parameters.constrain_to_mask else outer_bounds
         minimum = inner_bounds[ 0 ]
         maximum = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) ) 
         
@@ -253,27 +273,25 @@ class Batch( object ) :
 
         assert( len( parameters.patch_shape ) == 3 )
         
-        patches = N.array( [
-            volume_data[ volume_index ][ 
+        patches = N.array(
+            [ [ volume_data[ volume_index ][ 
                 offsets[ 0 ] : offsets[ 0 ] + parameters.patch_shape[ 0 ],
                 offsets[ 1 ] : offsets[ 1 ] + parameters.patch_shape[ 1 ],
                 offsets[ 2 ] : offsets[ 2 ] + parameters.patch_shape[ 2 ] ]
-            for volume_index, offsets in offsets_per_volume ] )
+                for offset in offsets_for_volume ]
+              for i, offsets_for_volume in offsets_per_volume ] )
 
         return patches
 
 
-    def __init__( self, aquisitions, batch_index, parameters, seed = None ) : 
+    def __init__( self, aquisitions, batch_index, parameters ) : 
 
         volumes = Batch.volumes_for_batch( aquisitions, batch_index, parameters )
-        offsets_per_volume = [
-            ( i, offsets )
-            for i in range( 0, len( volumes ) )
-            for offsets in Batch.offsets( volumes[ i ], parameters ) ]
+        bounds = Batch.normalised_bounds_of_unmasked_regions( volumes )
 
-        if seed is not None :
-            random.seed( seed )
-            random.shuffle( offsets_per_volume )
+        offsets_per_volume = [
+            Batch.offsets( v, bounds[ i ], parameters ) for i, v in enumerate( volumes ) ]
+        self.__patch_offsets = offsets_per_volume
 
         image_data = [ volume.images for volume in volumes ] 
         self.__image_patches = Batch.patches( image_data, offsets_per_volume, parameters )
@@ -283,6 +301,12 @@ class Batch( object ) :
 
         mask_data = [ volume.masks for volume in volumes ] 
         self.__mask_patches = Batch.patches( mask_data, offsets_per_volume, parameters )
+
+
+    @property
+    def patch_offsets( self ) :
+
+        return self.__patch_offsets
 
 
     @property
@@ -302,122 +326,6 @@ class Batch( object ) :
 
         return self.__mask_patches
 
-
-#---------------------------------------------------------------------------------------------------
-
-class Loader( object ) :
-
-
-    @staticmethod
-    def dense_to_patch_based_labels( dense_labels ) :
-
-        shape = dense_labels.shape
-        all_instances = slice( 0, shape[ 0 ], 1 )
-        offset_to_centre = tuple( int( d / 2 ) for d in shape[ 1 : ] )
-        patch_labels = dense_labels[ ( all_instances, ) + offset_to_centre ]
-        return patch_labels
-    
-
-    @staticmethod
-    def dense_labels_in_centered_window( dense_labels, margin ) :
-
-        shape = dense_labels.shape
-        all_instances = slice( 0, shape[ 0 ], 1 )
-        window = tuple( slice( margin, d - margin, 1 ) for d in shape[ 1: ] )
-
-        labels_in_window = dense_labels[ ( all_instances, ) + window ]
-        return labels_in_window
-    
-
-    @staticmethod
-    def labels_to_distribution( labels, label_count ) :
-
-        batch_size = labels.shape[ 0 ]
-        data_shape = labels.shape[ 1 : ]
-        distribution_shape = ( label_count, batch_size, ) + data_shape 
-        distribution = N.zeros( distribution_shape ).astype( T.config.floatX )
-
-        for i in range( 0, label_count ) :
-            distribution[ i ][ labels == i ] = 1.0
-
-        permutation = [ i for i in range( 1, len( distribution_shape ) ) ] + [ 0 ]
-        return N.transpose( distribution, permutation )
-    
-
-    @staticmethod
-    def per_patch_distribution_over_labels( batch, label_count ) :
-        
-        labels = Loader.dense_to_patch_based_labels( batch.label_patches )
-        label_distribution = Loader.labels_to_distribution( labels, label_count )
-        return ( batch.image_patches, label_distribution )
-
-
-    @staticmethod
-    def dense_distribution_over_labels( batch, window_margin, label_count ) :
-        
-        labels = Loader.dense_labels_in_centered_window( batch.label_patches, window_margin )
-        label_distribution = Loader.labels_to_distribution( labels, label_count )
-        return ( batch.image_patches, label_distribution )
-
-
-    def __init__( self, dataset, training_set_parameters, label_count, window_margin = 0 ) :
-
-        self.__label_count = label_count
-        self.__dataset = dataset
-        self.__training_set_parameters = training_set_parameters
-        self.__validation_set_parameters = (
-            training_set_parameters.with_patch_stride( 1 ).with_volume_count( len( dataset.validation_set ) ) )
-
-
-    @property
-    def label_count( self ) :
-
-        return self.__label_count
-
-
-    @property
-    def dataset( self ) :
-
-        return self.__dataset
-
-
-    def training_batch( self, index ) :
-
-        return Batch( self.dataset.training_set, index, self.__training_set_parameters )
-
-
-    def validation_set( self ) :
-
-        return Batch( self.dataset.validation_set, 0, self.__validation_set_parameters )
-    
-
-    def load_training_batch_with_per_patch_distribution_over_labels( self, batch_index ) :
-
-        return Loader.per_patch_distribution_over_labels( self.training_batch( batch_index ), self.label_count )
-
-
-    def load_training_batch_with_dense_distribution_over_labels( self, batch_index ) :
-
-        return Loader.dense_distribution_over_labels(
-            self.training_batch( batch_index ), self.parameters.window_margin, self.label_count )
-
-
-    def load_validation_set_with_per_patch_distribution_over_labels( self ):
-
-        return Loader.per_patch_distribution_over_labels( self.validation_set(), self.label_count )
-
-
-    def load_validation_set_with_dense_distribution_over_labels( self ) :
-
-        return Loader.dense_distribution_over_labels(
-            self.validation_set(), self.parameters.window_margin, self.label_count )
-
-
-    def load_validation_set_with_dense_labels( self ) :
-
-        validation_set = self.validation_set()
-        labels = Loader.labels_in_centered_window( validation_set.label_patches, self.parameters.window_margin )
-        return ( validation_set.image_patches, labels )
 
 
 
@@ -441,6 +349,15 @@ class Parameters( object ) :
         self.constrain_to_mask = constrain_to_mask
         self.window_margin = 0
 
+
+    def __str__( self ) :
+
+        return ( "parameters {\n" +
+                 "volume_count      : " + str( self.volume_count ) + "\n" +
+                 "patch_shape       : " + str( self.patch_shape ) + "\n" +
+                 "patch_stride      : " + str( self.patch_stride ) + "\n" +
+                 "constrain_to_mask : " + str( self.constrain_to_mask ) + "\n" +
+                 "window_margin     : " + str( self.window_margin ) + "\n}" )
 
     def with_volume_count( self, batch_volume_count ) :
 
@@ -475,6 +392,7 @@ class Parameters( object ) :
         other = copy.copy( self )
         other.window_margin = window_margin
         return other
+
 
 
 #---------------------------------------------------------------------------------------------------
