@@ -43,7 +43,7 @@ class OasisAquisition( data.Aquisition ):
 
         meta_data = nibabel.analyze.load( file_list[ 0 ] )
         raw_data = meta_data.get_data()
-        flipped_data = numpy.flip( raw_data, 0 )
+        flipped_data = numpy.flipud( raw_data )
         rotated_data = numpy.transpose( flipped_data, ( 2, 1, 0, 3 ) )
         processed_data = rotated_data
         x, y, z, _ = processed_data.shape
@@ -139,18 +139,18 @@ if __name__ == '__main__' :
     plot.imshow( centre_mask )
     #plot.show()
 
-    parameters = data.Batch.Params( 
+    parameters = data.Parameters( 
         volume_count = int( training_count / 5 ),
         patch_shape = geometry.voxel( 1, 32, 32 ),
         patch_stride = 4 )
     
-    batch = data.Batch( dataset.training_set, 0, parameters, seed = 42 )
-    print( 'batch shape : ' + str( batch.image_patches.shape ) )
+    batch = data.Batch( dataset.training_set, 0, parameters )
 
     figure2 = plot.figure()
     for i in range( 1, 12 + 1 ) :
+        image_shape = batch.image_patches.shape[ 3:5 ]
         figure2.add_subplot( 3, 4, i )
-        plot.imshow( batch.image_patches[ i, 0, :, : ] )
+        plot.imshow( batch.image_patches[ 0, 16000 + i, 0, :, : ].reshape( image_shape ) )
 
     plot.show()
 
