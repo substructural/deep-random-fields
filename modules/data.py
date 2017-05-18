@@ -138,7 +138,7 @@ class Volume( object ):
 
         minima, maxima = self.unmasked_bounds
         d = maxima - minima
-        return geometry.voxel( minima + ( 0.5 * d ) )
+        return voxel( minima + ( 0.5 * d ) )
 
 
     @property
@@ -232,20 +232,21 @@ class Batch( object ) :
     @staticmethod
     def normalised_bounds_of_unmasked_regions( volumes ) :
 
+        bounds = N.array( [ volume.unmasked_bounds for volume in volumes ] )
         count = bounds[ 0 ]
-        bounds = numpy.array( [ volume.unmasked_bounds for volume in volumes ] )
 
-        minimum = numpy.amin( bounds, axis=0 )[ 0 ]
-        maximum = numpy.amax( bounds, axis=0 )[ 1 ]
+        minimum = N.amin( bounds, axis=0 )[ 0 ]
+        maximum = N.amax( bounds, axis=0 )[ 1 ]
         span = maximum - minimum
 
         unnormalised_minima = bounds[ :, 0, : ]
         unnormalised_maxima = bounds[ :, 1, : ]
-        centres = 0.5 * ( unnormalised_minima + unnormalied_maxima )
+        centres = 0.5 * ( unnormalised_minima + unnormalised_maxima )
 
         normalised_minima = centres - ( 0.5 * span )
         normalised_maxima = centres + ( 0.5 * span )
-        return numpy.array( ( normalised_minima, normalised_maxima ) )
+
+        return N.array( ( normalised_minima, normalised_maxima ) )
     
 
     @staticmethod
@@ -253,15 +254,16 @@ class Batch( object ) :
 
         assert( len( parameters.patch_shape ) == 3 )
 
-        outer_bounds = volume.images.shape
+        outer_bounds = cuboid( ( 0, 0, 0 ), volume.images.shape )
         inner_bounds = unmasked_bounds if parameters.constrain_to_mask else outer_bounds
-        minimum = inner_bounds[ 0 ]
-        maximum = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) ) 
+
+        minima = inner_bounds[ 0 ]
+        maxima = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) ) 
         
         grid = N.mgrid[
-            minimum[ 0 ] : maximum[ 0 ] + 1 : parameters.patch_stride,
-            minimum[ 1 ] : maximum[ 1 ] + 1 : parameters.patch_stride,
-            minimum[ 2 ] : maximum[ 2 ] + 1 : parameters.patch_stride ]
+            minima[ 0 ] : maxima[ 0 ] + 1 : parameters.patch_stride,
+            minima[ 1 ] : maxima[ 1 ] + 1 : parameters.patch_stride,
+            minima[ 2 ] : maxima[ 2 ] + 1 : parameters.patch_stride ]
 
         count = N.product( grid.shape[ 1:5 ] )
         offsets = grid.reshape( 3, count ).T
@@ -278,8 +280,8 @@ class Batch( object ) :
                 offsets[ 0 ] : offsets[ 0 ] + parameters.patch_shape[ 0 ],
                 offsets[ 1 ] : offsets[ 1 ] + parameters.patch_shape[ 1 ],
                 offsets[ 2 ] : offsets[ 2 ] + parameters.patch_shape[ 2 ] ]
-                for offset in offsets_for_volume ]
-              for i, offsets_for_volume in offsets_per_volume ] )
+                for offsets in offsets_for_volume ]
+              for volume_index, offsets_for_volume in enumerate( offsets_per_volume ) ] )
 
         return patches
 
@@ -290,7 +292,7 @@ class Batch( object ) :
         bounds = Batch.normalised_bounds_of_unmasked_regions( volumes )
 
         offsets_per_volume = [
-            Batch.offsets( v, bounds[ i ], parameters ) for i, v in enumerate( volumes ) ]
+            Batch.offsets( v, bounds[ :, i ], parameters ) for i, v in enumerate( volumes ) ]
         self.__patch_offsets = offsets_per_volume
 
         image_data = [ volume.images for volume in volumes ] 
