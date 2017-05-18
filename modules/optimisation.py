@@ -60,7 +60,7 @@ class CategoricalCrossEntropyCost( CostFunction ) :
 
 #---------------------------------------------------------------------------------------------------
 
-class Optimiser( object ) :
+class SimpleGradientDescentOptimiser( object ) :
 
 
     def __init__( self, learning_rate ) :
