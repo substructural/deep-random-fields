@@ -24,7 +24,7 @@ class TestData :
     @staticmethod
     def index_patches() :
 
-        return numpy.array( [ [ 
+        return numpy.array( [ [
 
             [ [ [  0,  1 ],
                 [  4,  5 ] ],
@@ -79,7 +79,7 @@ class TestData :
                 for y in range( 0, 2 ) :
                     for x in range( 0, 2 ) :
                         d = indices[ 0, p, z, y, x ]
-                        distribution[ 0, p, z, y, x, d ] = 1.0 
+                        distribution[ 0, p, z, y, x, d ] = 1.0
         return distribution
 
 
@@ -95,7 +95,7 @@ class TestData :
                             for x in range( 0, 2 ) :
                                 d = ( ( k + z ) * 16 ) + ( ( j + y ) * 4 ) + ( i + x )
                                 p = k * 9 + j * 3 + i
-                                distribution[ 0, p, z, y, x, d ] = 1.0 
+                                distribution[ 0, p, z, y, x, d ] = 1.0
         return distribution
 
 
@@ -109,7 +109,7 @@ class TestData :
                     i = z*16 + y*4 + x
                     volume[ 0, z, y, x, i ] = 1.0
         return volume
-                    
+
 
 
 #---------------------------------------------------------------------------------------------------
@@ -134,14 +134,14 @@ class DenseLabelTests( unittest.TestCase ) :
         expected_volume = TestData.distribution_volume()
 
         self.assertTrue( numpy.array_equal( computed_volume, expected_volume ) )
-        
+
 
     def test_dense_volume_distribution_to_dense_volume_indices( self ) :
 
         distribution = TestData.distribution_volume()
         computed_indices = labels.dense_volume_distribution_to_dense_volume_indices( distribution )
         expected_indices = TestData.index_volume().reshape( ( 1, 4, 4, 4 ) )
-        
+
         self.assertTrue( numpy.array_equal( computed_indices, expected_indices ) )
 
 
@@ -159,7 +159,7 @@ class DenseLabelTests( unittest.TestCase ) :
 #---------------------------------------------------------------------------------------------------
 
 
-class SparseLabeltests( unittest.TestCase ) :
+class SparseLabelTests( unittest.TestCase ) :
 
 
 
@@ -173,7 +173,7 @@ class SparseLabeltests( unittest.TestCase ) :
         self.assertTrue( numpy.array_equal( computed_samples, expected_samples ) )
 
 
-        
+
     def test_sparse_patch_distribution_to_dense_volume_distribution( self ) :
 
         dense_patches = TestData.overlapping_distribution_patches()
@@ -184,7 +184,7 @@ class SparseLabeltests( unittest.TestCase ) :
         self.assertTrue( numpy.array_equal( computed_volume, expected_volume ) )
 
 
-        
+
 
 
 #---------------------------------------------------------------------------------------------------

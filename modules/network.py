@@ -3,7 +3,7 @@
 
 
 import theano as T
-import theano.tensor 
+import theano.tensor
 
 import numpy as N
 import numpy.random
@@ -33,8 +33,8 @@ class Layer( object ) :
     def initial_parameter_values( self ) :
 
         raise NotImplementedError
-    
-    
+
+
 
 #----------------------------------------------------------------------------------------------------
 
@@ -51,19 +51,19 @@ class Architecture( object ):
         self.__input_dimensions = input_dimensions
         self.__output_dimensions = output_dimensions
 
-        
+
     @property
     def input_dimensions( self ) :
 
         return self.__input_dimensions
 
-        
+
     @property
     def output_dimensions( self ) :
 
         return self.__output_dimensions
 
-        
+
     @property
     def layers( self ) :
 
@@ -74,7 +74,7 @@ class Architecture( object ):
 
         N.random.seed( seed )
         return [ layer.initial_parameter_values() for layer in self.layers ]
-    
+
 
     def graph( self, model_parameters, inputs ) :
 
@@ -83,10 +83,10 @@ class Architecture( object ):
         graph = inputs
         for i, layer in enumerate( self.layers ) :
 
-            graph = layer.graph( model_parameters[ i ], graph ) 
+            graph = layer.graph( model_parameters[ i ], graph )
 
         return graph
-        
+
 
 
 
@@ -103,10 +103,10 @@ class Model( object ) :
         initial_values = (
             learned_parameter_values if learned_parameter_values is not None
             else architecture.initial_parameter_values( seed ) )
-        
+
         parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ] for subset in initial_values ]
 
-        input_broadcast_pattern = ( False, ) * architecture.input_dimensions 
+        input_broadcast_pattern = ( False, ) * architecture.input_dimensions
         input_type = T.tensor.TensorType( T.config.floatX, input_broadcast_pattern )
         inputs = input_type( 'X' )
 
@@ -123,7 +123,7 @@ class Model( object ) :
         self.__architecture = architecture
         self.__parameters = parameters
 
-        
+
     @property
     def architecture( self ) :
 
@@ -134,8 +134,13 @@ class Model( object ) :
     def parameters( self ) :
 
         return self.__parameters
-        
-        
+
+
+    def current_values( self ) :
+
+        return [ [ w.get_value() for w in layer ] for layer in self.parameters ]
+
+
     def validate( self, inputs, labels ) :
 
         return self.__validation_graph( inputs, labels )
@@ -144,7 +149,7 @@ class Model( object ) :
     def optimise( self, inputs, labels ) :
 
         return self.__optimisation_graph( inputs, labels )
-        
+
 
 
 #---------------------------------------------------------------------------------------------------
@@ -153,8 +158,8 @@ class Model( object ) :
 def has_converged( costs, threshold = 1e-5, k = 4 ) :
 
     if len( costs ) > 1 :
-        minimum = min( costs[ -k : ] ) 
-        maximum = max( costs[ -k : ] ) 
+        minimum = min( costs[ -k : ] )
+        maximum = max( costs[ -k : ] )
         change_over_last_k = abs( maximum - minimum )
         return change_over_last_k < threshold
     else :
@@ -189,7 +194,7 @@ def train_for_epoch( model, load_training_set, batch_count, on_batch_event = nul
 
 
 def train(
-        model, 
+        model,
         load_training_set,
         load_validation_set,
         epoch_count,
@@ -212,11 +217,11 @@ def train(
         validation_output, validation_cost = model.validate( validation_inputs, validation_labels )
         validation_costs.append( validation_cost )
 
-        on_epoch_event( epoch, validation_output, validation_cost, training_costs_for_epoch ) 
+        on_epoch_event( epoch, validation_output, validation_cost, training_costs_for_epoch )
 
         network_has_overfit = has_overfit(
             validation_costs,
-            1, 
+            1,
             tail_length_for_overfitting )
 
         network_has_converged = has_converged(

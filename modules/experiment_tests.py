@@ -14,7 +14,7 @@ import activation
 
 #---------------------------------------------------------------------------------------------------
 
-class ExperimentTestHarness( class Experiment ) :
+class ExperimentTestHarness( Experiment ) :
 
     def __init__(
             self,
@@ -39,8 +39,8 @@ class ExperimentTestHarness( class Experiment ) :
         self.expected_labels = expected_labels
         self.on_batch_events = []
         self.on_epoch_events = []
-        
-        
+
+
     def format_labels( self, patches ) :
 
         return self.expected_labels
@@ -54,7 +54,7 @@ class ExperimentTestHarness( class Experiment ) :
     def on_epoch_event( self, epoch_index, validation_output, validation_costs, training_costs ) :
 
         self.on_epoch_events.append( ( batch_index, validationn_output, validation_costs, training_costs ) )
-    
+
 
 
 #---------------------------------------------------------------------------------------------------
@@ -79,7 +79,7 @@ class BaseExperimentTests( unittest.TestCase ) :
             validation_batch_parameters,
             experiment_parameters,
         )
-        
+
 
 
 #---------------------------------------------------------------------------------------------------

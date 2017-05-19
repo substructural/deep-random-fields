@@ -30,7 +30,7 @@ class CostFunction( object ) :
 
     def regularise_L1( self, parameters ) :
 
-        L1 = T.sum( [ T.sum( T.abs( p ) ) for subset in parameters for p in subset ] )
+        L1 = T.sum( [ T.sum( abs( p ) ) for subset in parameters for p in subset ] )
         return self.weight_L1 * L1
 
 
@@ -47,14 +47,14 @@ class CategoricalCrossEntropyCost( CostFunction ) :
 
     def __init__( self, weight_L1, weight_L2 ) :
 
-        super( CrossEntropyCost, self ).__init__( weight_L1, weight_L2 )
+        super( CategoricalCrossEntropyCost, self ).__init__( weight_L1, weight_L2 )
 
 
     def __call__( self, outputs, labels, parameters ) :
 
-        cross_entropy = (-1) * T.sum( labels * T.log( outputs ) )
-        L1 = self.regularise_L1( parameters ) 
-        L2 = self.regularise_L2( parameters ) 
+        cross_entropy = (-1) * T.mean( labels * T.log( outputs ) )
+        L1 = self.regularise_L1( parameters )
+        L2 = self.regularise_L2_square( parameters )
         return cross_entropy + L1 + L2
 
 
@@ -70,7 +70,7 @@ class SimpleGradientDescentOptimiser( object ) :
 
     def __call__( self, parameter, cost ) :
 
-        return parameter - self.learning_rate * T.grad( cost, wrt=parameter ) 
+        return parameter - self.learning_rate * T.grad( cost, wrt=parameter )
 
 
     @property
