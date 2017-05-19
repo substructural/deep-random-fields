@@ -27,19 +27,19 @@ class Subject( object ) :
 
 
     @property
-    def subject_id( self ) : 
+    def subject_id( self ) :
 
         return self.__subject_id
 
 
     @property
-    def gender( self ) : 
+    def gender( self ) :
 
         return self.__gender
 
 
     @property
-    def pathology( self ) : 
+    def pathology( self ) :
 
         return self.__pathology
 
@@ -50,8 +50,8 @@ class Subject( object ) :
             "subject-id    : " + str( self.subject_id ) + "\n" +
             "gender        : " + str( self.gender ) + "\n" +
             "pathology     : " + str( self.pathology ) + "\n" )
-    
-    
+
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -74,16 +74,16 @@ class Aquisition( object ) :
     def aquisition_id( self ) :
 
         return self.__aquisition_id
-    
+
 
     @property
-    def subject( self ) : 
+    def subject( self ) :
 
         return self.__subject
 
 
     @property
-    def subject_age_at_aquisition( self ) : 
+    def subject_age_at_aquisition( self ) :
 
         return self.__subject_age_at_aquisition
 
@@ -92,7 +92,7 @@ class Aquisition( object ) :
 
         return (
             "aquisition-id : " + str( self.aquisition_id ) + "\n" +
-            str( self.subject ) + 
+            str( self.subject ) +
             "age at scan   : " + str( self.subject_age_at_aquisition ) + "\n" )
 
 
@@ -101,35 +101,35 @@ class Aquisition( object ) :
 
 class Volume( object ):
 
-    
+
     def __init__( self, image_data, label_data, mask_data ) :
 
         self.__image_data = image_data
         self.__label_data = label_data
         self.__mask_data = mask_data
 
-    
+
     @property
-    def images( self ) : 
+    def images( self ) :
 
         return self.__image_data
 
 
     @property
-    def labels( self ) : 
+    def labels( self ) :
 
         return self.__label_data
 
 
     @property
-    def masks( self ) : 
+    def masks( self ) :
 
         return self.__mask_data
-    
+
 
     @property
-    def dimensions( self ) : 
-    
+    def dimensions( self ) :
+
         return self.masks.shape
 
 
@@ -142,7 +142,7 @@ class Volume( object ):
 
 
     @property
-    def unmasked_bounds( self ) : 
+    def unmasked_bounds( self ) :
 
         mask_reduced_in_x = N.any( self.masks, ( 0, 1 ) )
         mask_reduced_in_y = N.any( self.masks, ( 0, 2 ) )
@@ -161,7 +161,7 @@ class Volume( object ):
         max_z = indices_of_unmasked_in_z[ -1 ]
 
         return cuboid( ( min_z, min_y, min_x ), ( max_z, max_y, max_x ) )
-        
+
 
 
 #---------------------------------------------------------------------------------------------------
@@ -169,12 +169,12 @@ class Volume( object ):
 class Dataset( object ) :
 
 
-    def __init__( self, aquisitions, training_count, validation_count, testing_count, random_seed ) : 
+    def __init__( self, aquisitions, training_count, validation_count, testing_count, random_seed ) :
 
         assert( len( aquisitions ) >= training_count + validation_count + testing_count )
 
         subjects = [ s for s in set( [ a.subject.subject_id for a in aquisitions ] ) ]
-        aquisitions_for = lambda s : [ a for a in aquisitions if a.subject.subject_id == s ] 
+        aquisitions_for = lambda s : [ a for a in aquisitions if a.subject.subject_id == s ]
         aquisitions_by_subject = { s : aquisitions_for( s ) for s in subjects }
 
         subsets = [ [], [], [] ]
@@ -201,7 +201,7 @@ class Dataset( object ) :
 
         return self.__training_set
 
-    
+
     @property
     def validation_set( self ) :
 
@@ -218,13 +218,13 @@ class Dataset( object ) :
 #---------------------------------------------------------------------------------------------------
 
 class Batch( object ) :
-    
+
 
     @staticmethod
     def volumes_for_batch( aquisitions, batch_index, parameters ) :
-        
-        start = batch_index * parameters.volume_count 
-        end = ( batch_index + 1 ) * parameters.volume_count 
+
+        start = batch_index * parameters.volume_count
+        end = ( batch_index + 1 ) * parameters.volume_count
         volumes = [ aquisition.read_volume() for aquisition in aquisitions[ start : end ] ]
         return volumes
 
@@ -233,21 +233,19 @@ class Batch( object ) :
     def normalised_bounds_of_unmasked_regions( volumes ) :
 
         bounds = N.array( [ volume.unmasked_bounds for volume in volumes ] )
-        count = bounds[ 0 ]
-
-        minimum = N.amin( bounds, axis=0 )[ 0 ]
-        maximum = N.amax( bounds, axis=0 )[ 1 ]
-        span = maximum - minimum
 
         unnormalised_minima = bounds[ :, 0, : ]
         unnormalised_maxima = bounds[ :, 1, : ]
-        centres = 0.5 * ( unnormalised_minima + unnormalised_maxima )
+        centres = voxel( 0.5 * ( unnormalised_minima + unnormalised_maxima ) )
 
-        normalised_minima = centres - ( 0.5 * span )
-        normalised_maxima = centres + ( 0.5 * span )
+        spans = unnormalised_maxima - unnormalised_minima
+        maximum_span = N.amax( spans, 0 )
+
+        normalised_minima = voxel( centres - N.ceil( 0.5 * maximum_span ) )
+        normalised_maxima = voxel( centres + N.ceil( 0.5 * maximum_span ) )
 
         return N.array( ( normalised_minima, normalised_maxima ) )
-    
+
 
     @staticmethod
     def offsets( volume, unmasked_bounds, parameters ) :
@@ -258,8 +256,8 @@ class Batch( object ) :
         inner_bounds = unmasked_bounds if parameters.constrain_to_mask else outer_bounds
 
         minima = inner_bounds[ 0 ]
-        maxima = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) ) 
-        
+        maxima = inner_bounds[ 1 ] - ( parameters.patch_shape - voxel( 1, 1, 1 ) )
+
         grid = N.mgrid[
             minima[ 0 ] : maxima[ 0 ] + 1 : parameters.patch_stride,
             minima[ 1 ] : maxima[ 1 ] + 1 : parameters.patch_stride,
@@ -268,15 +266,15 @@ class Batch( object ) :
         count = N.product( grid.shape[ 1:5 ] )
         offsets = grid.reshape( 3, count ).T
         return offsets
-        
+
 
     @staticmethod
     def patches( volume_data, offsets_per_volume, parameters ) :
 
         assert( len( parameters.patch_shape ) == 3 )
-        
+
         patches = N.array(
-            [ [ volume_data[ volume_index ][ 
+            [ [ volume_data[ volume_index ][
                 offsets[ 0 ] : offsets[ 0 ] + parameters.patch_shape[ 0 ],
                 offsets[ 1 ] : offsets[ 1 ] + parameters.patch_shape[ 1 ],
                 offsets[ 2 ] : offsets[ 2 ] + parameters.patch_shape[ 2 ] ]
@@ -286,7 +284,7 @@ class Batch( object ) :
         return patches
 
 
-    def __init__( self, aquisitions, batch_index, parameters ) : 
+    def __init__( self, aquisitions, batch_index, parameters ) :
 
         volumes = Batch.volumes_for_batch( aquisitions, batch_index, parameters )
         bounds = Batch.normalised_bounds_of_unmasked_regions( volumes )
@@ -295,13 +293,13 @@ class Batch( object ) :
             Batch.offsets( v, bounds[ :, i ], parameters ) for i, v in enumerate( volumes ) ]
         self.__patch_offsets = offsets_per_volume
 
-        image_data = [ volume.images for volume in volumes ] 
+        image_data = [ volume.images for volume in volumes ]
         self.__image_patches = Batch.patches( image_data, offsets_per_volume, parameters )
 
-        label_data = [ volume.labels for volume in volumes ] 
+        label_data = [ volume.labels for volume in volumes ]
         self.__label_patches = Batch.patches( label_data, offsets_per_volume, parameters )
 
-        mask_data = [ volume.masks for volume in volumes ] 
+        mask_data = [ volume.masks for volume in volumes ]
         self.__mask_patches = Batch.patches( mask_data, offsets_per_volume, parameters )
 
 
@@ -318,15 +316,53 @@ class Batch( object ) :
 
 
     @property
-    def label_patches( self ) : 
+    def label_patches( self ) :
 
         return self.__label_patches
 
-    
+
     @property
-    def masks_patches( self ) : 
+    def masks_patches( self ) :
 
         return self.__mask_patches
+
+
+
+#---------------------------------------------------------------------------------------------------
+
+class Accessor( object ) :
+
+
+    def __init__(
+            self,
+            dataset,
+            training_batch_parameters,
+            label_conversion ) :
+
+        self.__label_conversion = label_conversion
+        self.__dataset = dataset
+        self.__training_batch_parameters = training_batch_parameters
+        self.__validation_batch_parameters = \
+            training_batch_parameters.with_volume_count( len( dataset.validation_set ) )
+
+
+    def images_and_labels( self, data_subset, batch_parameters, batch_index ) :
+
+        batch = Batch( data_subset, batch_index, batch_parameters )
+        label_distribution = self.__label_conversion.distribution_for_patches( batch.label_patches )
+        return ( batch.image_patches, label_distribution )
+
+
+    def training_images_and_labels( self, batch_index ) :
+
+        return self.images_and_labels(
+            self.__dataset.training_set, self.__training_batch_parameters, batch_index )
+
+
+    def validation_images_and_labels( self, batch_index ) :
+
+        return self.images_and_labels(
+            self.__dataset.validation_set, self.__validation_batch_parameters, batch_index )
 
 
 

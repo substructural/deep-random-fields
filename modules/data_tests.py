@@ -1,11 +1,14 @@
 #===================================================================================================
 # data tests
 
-import numpy
-import data
-
 import unittest
 import pdb
+
+import numpy
+
+import data
+import geometry
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -40,230 +43,196 @@ class Mock :
 
 #---------------------------------------------------------------------------------------------------
 
-class LoaderTests( unittest.TestCase ) :
-
-
-    def test_dense_to_patch_based_labels_yields_the_correct_label_per_patch( self ) :
-
-        dense_labels = numpy.array( [
-            [ [ k * 100 + j * 10 + i for i in range( 0, 10 ) ] for j in range( 0, 10 ) ]
-            for k in range( 0, 20 ) ] )
-
-        expected_patch_based_labels = numpy.array( [ k * 100 + 55 for k in range( 0, 20 ) ] )
-        computed_patch_based_labels = data.Loader.dense_to_patch_based_labels( dense_labels )
-
-        self.assertTrue( numpy.array_equal( computed_patch_based_labels, expected_patch_based_labels ) )
-
-
-    def test_dense_labels_in_centred_window_has_the_correct_offset_and_dimensions( self ) :
-
-        X = 10
-        Y = 10
-        N = 20
-        d = 2
-
-        dense_labels = numpy.array( [
-            [ [ k * 100 + j * 10 + i for i in range( 0, X ) ] for j in range( 0, Y ) ]
-            for k in range( 0, N ) ] )
-
-        expected_patch_based_labels = numpy.array( [
-            [ [ k * 100 + j * 10 + i for i in range( 0 + d, X - d ) ] for j in range( 0 + d, Y - d ) ]
-            for k in range( 0, N ) ] )
-
-        computed_patch_based_labels = data.Loader.dense_labels_in_centered_window( dense_labels, d )
-
-        self.assertTrue( numpy.array_equal( computed_patch_based_labels, expected_patch_based_labels ) )
-
-
-    def test_labels_to_distribution_assigns_the_correct_probability_to_the_correct_class( self ) :
-
-        labels = numpy.array( [ ( i % 5 ) for i in range( 0, 20 ) ] )
-
-        computed_distribution = data.Loader.labels_to_distribution( labels, 5 )
-        expected_distribution = numpy.array(
-            [ [ ( 1.0 if ( i % 5 ) == k else 0.0 ) for k in range( 0, 5 ) ] for i in range( 0, 20 ) ] )
-
-        self.assertTrue( numpy.array_equal( computed_distribution, expected_distribution ) )
-
-
-    def test_per_patch_distribution_over_labels( self ) :
-
-        initial_images = numpy.array(
-            [ [ [ ( n * 100 + j * 10 + i )
-                for i in range( 0, 10 ) ]
-              for j in range( 0, 10 ) ]
-            for n in range( 0, 20 ) ] )
-
-        initial_labels = numpy.array(
-            [ [ [ ( ( n % 5 ) if ( i == j and j == 5 ) else 6 )
-                for i in range( 0, 10 ) ]
-              for j in range( 0, 10 ) ]
-            for n in range( 0, 20 ) ] )
-
-        mock_batch = Mock.Batch( image_patches = initial_images, label_patches = initial_labels )
-
-        output_image_patches, computed_distribution = data.Loader.per_patch_distribution_over_labels( mock_batch, 5 )
-        expected_distribution = numpy.array(
-            [ [ ( 1.0 if ( i % 5 ) == k else 0.0 ) for k in range( 0, 5 ) ] for i in range( 0, 20 ) ] )
-
-        self.assertTrue( numpy.array_equal( computed_distribution, expected_distribution ) )
-        self.assertTrue( numpy.array_equal( output_image_patches, initial_images ) )
-
-
-    def test_dense_distribution_over_labels( self ) :
-
-        K = 5
-        d = 2
-
-        initial_images = numpy.array(
-            [ [ [ ( n * 100 + j * 10 + i )
-                for i in range( 0, 10 ) ]
-              for j in range( 0, 10 ) ]
-            for n in range( 0, 20 ) ] )
-
-        initial_labels = numpy.array(
-            [ [ [ ( ( n + j + i ) % K ) 
-                for i in range( 0, 10 ) ]
-              for j in range( 0, 10 ) ]
-            for n in range( 0, 20 ) ] )
-
-        expected_distribution = numpy.array(
-            [ [ [ [ ( 1.0 if ( ( ( n + j + i ) % K ) == k ) else 0.0 )
-                  for k in range( 0, K ) ]
-                for i in range( 0 + d, 10 - d ) ]
-              for j in range( 0 + d, 10 - d ) ]
-            for n in range( 0, 20 ) ] )
-
-        mock_batch = Mock.Batch( image_patches = initial_images, label_patches = initial_labels )
-        output_image_patches, computed_distribution = data.Loader.dense_distribution_over_labels( mock_batch, d, K )
-
-        self.assertTrue( numpy.array_equal( computed_distribution, expected_distribution ) )
-        self.assertTrue( numpy.array_equal( output_image_patches, initial_images ) )
-
-        
-    def test_that_accessors_are_consistent_with_constructor( self ) :
-
-        dataset = Mock.Dataset( training_set = [ 1, 2, 3, 4 ], validation_set = [ 1, 2, 3, 4 ] )
-        label_count = 5
-        window_margin = 2
-        training_set_parameters = data.Parameters( 20, ( 10, 10 ) ).with_patch_stride( 2 ).with_window_margin( 2 )
-        loader = data.Loader( dataset, training_set_parameters, label_count, window_margin ) 
-
-        self.assertEqual( loader.dataset, dataset )
-        self.assertEqual( loader.label_count, label_count )
-
-        
-    @staticmethod
-    def loader_under_test( image_data, label_data, mask_data, parameters, split = 2, label_count = 2 ) :
-
-        volumes = [ data.Volume( image_data[ c ], label_data[ c ], mask_data[ c ] ) for c in range( 0, 4 ) ]
-        aquisitions = [ Mock.Aquisition( c, c, 1, volumes[ c ] ) for c in range( 0, 4 ) ]
-        dataset = Mock.Dataset( training_set = aquisitions[ 0 : split ], validation_set = aquisitions[ split : ] )
-
-        return data.Loader( dataset, parameters, label_count ) 
-
-        
-    @staticmethod
-    def define_volume( f, K, J, I, C ) :
-
-        return numpy.array(
-            [ [ [ [ f( c, k, j, i )
-                    for i in range( 0, I ) ]
-                  for j in range( 0, J ) ]
-                for k in range( 0, K ) ]
-              for c in range( 0, C ) ] )
+class VolumeTests( unittest.TestCase ) :
 
 
     @staticmethod
-    def define_patches( f, C, Z, Y, X, patch_offsets ) :
+    def volume_under_test( j0, j1, jN, i0, i1, iN ):
 
-        return numpy.array(
-            [ [ [ [ [ f( c, k + z, j + y, i + x )
-                      for x in range( 0, X ) ]
-                    for y in range( 0, Y ) ]
-                  for z in range( 0, Z ) ]
-                for ( k, j, i ) in patch_offsets ]
-              for c in range( 0, C ) ] )
-
-
-    @staticmethod
-    def define_labels( f, C, z, y, x, patch_offsets ) :
-
-        return numpy.array(
-            [ [ f( c, k + z, j + y, i + x )
-                for ( k, j, i ) in patch_offsets ]
-              for c in range( 0, C ) ] )
-
-            
-    def test_that_training_batches_have_the_correct_per_patch_labels( self ) :
-
-        C, K, J, I = 4, 1, 6, 5
-        Z, Y, X = 1, 3, 3
-        training_split = 2
-
-        image_value = lambda c, k, j, i : ( ( j * 10 ) + i + c )
-        label_value = lambda c, k, j, i : ( ( i + j + c ) % 3 )
-        mask_value  = lambda c, k, j, i : ( j < 5 )
-
-        image_data = LoaderTests.define_volume( image_value, K, J, I, C )
-        label_data = LoaderTests.define_volume( label_value, K, J, I, C )
-        mask_data  = LoaderTests.define_volume( mask_value,  K, J, I, C )
-
-        patch_offsets = [ ( 0, 0, 0 ), ( 0, 0, 2 ), ( 0, 2, 0 ), ( 0, 2, 2 ) ]
-        expected_image_patches = LoaderTests.define_patches( image_value, training_split, Z, Y, X, patch_offsets )
-        expected_per_patch_labels = LoaderTests.define_labels( label_value, training_split, 0, 1, 1, patch_offsets )
-
-        expected_per_patch_distribution_over_labels = data.Loader.labels_to_distribution(
-            expected_per_patch_labels, label_count = 3 )
-
-        parameters = data.Parameters( 1, patch_shape = ( 1, 3, 3 ), patch_stride = 2 )
-        loader = LoaderTests.loader_under_test(
-            image_data, label_data, mask_data, parameters, split = training_split, label_count = 3 )
-
-        for batch_index in range( 0, training_split ) :
-            
-            image_patches, label_distribution = (
-                loader.load_training_batch_with_per_patch_distribution_over_labels( batch_index ) )
-            
-            self.assertTrue( numpy.array_equal( image_patches, expected_image_patches[ batch_index ] ) )
-            self.assertTrue( numpy.array_equal( label_distribution,
-                                                expected_per_patch_distribution_over_labels[ batch_index ] ) )
+        I = range( 0, iN )
+        J = range( 0, jN )
+        masked = lambda j, i : 1 if ( i > i0 and i < i1 ) and ( j > j0 and j < j1 ) else 0
+        mask   = numpy.array( [ [ [ masked( j, i ) for i in I ] for j in J ] ] )
+        image  = numpy.array( [ [ [ ( j * 10 + i ) for i in I ] for j in J ] ] )
+        labels = numpy.array( [ [ [ i for i in I ] for j in J ] ] )
+        return data.Volume( image, labels, mask )
 
 
-    def test_that_validation_batches_have_the_correct_per_patch_labels( self ) :
+    def test_unmasked_bounds( self ) :
 
-        C, K, J, I = 4, 1, 6, 5
-        Z, Y, X = 1, 3, 3
-        training_split = 2
+        j0, j1, jN = 2, 7, 10
+        i0, i1, iN = 3, 6, 8
 
-        image_value = lambda c, k, j, i : ( ( j * 10 ) + i + c )
-        label_value = lambda c, k, j, i : ( ( i + j + c ) % 3 )
-        mask_value  = lambda c, k, j, i : ( j < 5 )
+        volume = VolumeTests.volume_under_test( j0, j1, jN, i0, i1, iN )
+        bounds = volume.unmasked_bounds
+        expected_bounds = geometry.cuboid( ( 0, j0 + 1, i0 + 1 ), ( 0, j1 - 1, i1 - 1 ) )
 
-        image_data = LoaderTests.define_volume( image_value, K, J, I, C )
-        label_data = LoaderTests.define_volume( label_value, K, J, I, C )
-        mask_data  = LoaderTests.define_volume( mask_value,  K, J, I, C )
+        self.assertTrue( numpy.array_equal( bounds, expected_bounds ) )
 
-        patch_offsets = [ ( 0, 0, 0 ), ( 0, 0, 2 ), ( 0, 2, 0 ), ( 0, 2, 2 ) ]
-        all_image_patches = LoaderTests.define_patches( image_value, C, Z, Y, X, patch_offsets )
-        all_per_patch_labels = LoaderTests.define_labels( label_value, C, 0, 1, 1, patch_offsets )
 
-        expected_image_patches = numpy.array( [ p for v in all_image_patches[ training_split : C ] for p in v ] )
-        expected_per_patch_labels = numpy.array( [ l for v in all_per_patch_labels[ training_split : C ] for l in v ] )
-        expected_per_patch_distribution_over_labels = data.Loader.labels_to_distribution(
-            expected_per_patch_labels, label_count = 3 )
+    def test_centre( self ):
 
-        parameters = data.Parameters( 1, patch_shape = ( 1, 3, 3 ), patch_stride = 2 )
-        loader = LoaderTests.loader_under_test(
-            image_data, label_data, mask_data, parameters, split = 2, label_count = 3 )
+        j0, j1, jN = 2, 7, 10
+        i0, i1, iN = 3, 6, 8
 
-        image_patches, label_distribution = loader.load_validation_set_with_per_patch_distribution_over_labels()
-        print( "\n\ncomputed labels:\n" + str( label_distribution ) + "\n" )
-        print( "\n\nexpected labels:\n" + str( expected_per_patch_distribution_over_labels ) + "\n" )
-        print( "\n\ncomputed patches:\n" + str( image_patches ) + "\n" )
-        print( "\n\nexpected patches:\n" + str( expected_image_patches ) + "\n" )
-        self.assertTrue( numpy.array_equal( image_patches, expected_image_patches ) )
-        self.assertTrue( numpy.array_equal( label_distribution, expected_per_patch_distribution_over_labels ) )
+        volume = VolumeTests.volume_under_test( j0, j1, jN, i0, i1, iN )
+        centre = volume.centre
+
+        j = j0 + ( ( j1 - j0 ) / 2.0 )
+        i = i0 + ( ( i1 - i0 ) / 2.0 )
+        expected_centre = geometry.voxel( 0, j, i )
+
+        self.assertTrue( numpy.array_equal( centre, expected_centre ) )
+
+
+#---------------------------------------------------------------------------------------------------
+
+class DatasetTests( unittest.TestCase ):
+
+
+    def test_that_all_aquisitions_are_assigned_when_equal_to_count( self ) :
+
+        aquisitions = [
+            Mock.Aquisition( i, data.Subject( "S_" + str( i ), i % 2, None ), 20 + i, [] )
+            for i in range( 0, 20 ) ]
+
+        dataset = data.Dataset( aquisitions, 10, 5, 5, 42 )
+        computed = set( dataset.training_set + dataset.validation_set + dataset.test_set )
+        expected = set( aquisitions )
+
+        self.assertEqual( computed, expected )
+
+
+    def test_that_the_specified_split_is_used_absent_subject_constraints( self ) :
+
+        aquisitions = [
+            Mock.Aquisition( i, data.Subject( "S_" + str( i ), i % 2, None ), 20 + i, [] )
+            for i in range( 0, 20 ) ]
+
+        dataset = data.Dataset( aquisitions, 10, 5, 5, 42 )
+        training_set = set( dataset.training_set )
+        validation_set = set( dataset.validation_set )
+        test_set = set( dataset.test_set )
+
+        self.assertEqual( len( training_set ), 10 )
+        self.assertEqual( len( validation_set ), 5 )
+        self.assertEqual( len( test_set ), 5 )
+
+
+    def test_that_all_aquisitions_for_a_single_subject_are_assigned_to_a_single_subset( self ):
+
+        subjects = [ data.Subject( "S_" + str( i ), i % 2, None ) for i in range( 0, 5 ) ]
+        aquisitions = [
+            Mock.Aquisition( i, subjects[ i % 5 ], 20 + i, [] ) for i in range( 0, 20 ) ]
+
+        dataset = data.Dataset( aquisitions, 10, 5, 5, 42 )
+        training_subjects = sorted( [ str( a.subject ) for a in dataset.training_set ] )
+        validation_subjects = sorted( [ str( a.subject ) for a in dataset.validation_set ] )
+        test_subjects = sorted( [ str( a.subject ) for a in dataset.test_set ] )
+
+        for subject in training_subjects:
+            self.assertTrue( subject not in validation_subjects )
+            self.assertTrue( subject not in test_subjects )
+
+        for subject in validation_subjects:
+            self.assertTrue( subject not in training_subjects )
+            self.assertTrue( subject not in test_subjects )
+
+        for subject in test_subjects:
+            self.assertTrue( subject not in training_subjects )
+            self.assertTrue( subject not in validation_subjects )
+
+
+#---------------------------------------------------------------------------------------------------
+
+class BatchTests( unittest.TestCase ):
+
+
+    def test_volumes_for_batch_uses_correct_batch_offset( self ):
+
+        aquisitions = [
+            Mock.Aquisition( i, data.Subject( "S_" + str( i ), i % 2, None ), 20 + i, [ i ] )
+            for i in range( 0, 20 ) ]
+
+        batch_parameters = data.Parameters( 3 )
+        computed = data.Batch.volumes_for_batch( aquisitions, 2, batch_parameters )
+        expected = [ [ i ] for i in [ 6, 7, 8 ] ]
+
+        self.assertEqual( computed, expected )
+
+
+    def test_that_normalised_bounds_of_unmasked_region_matches_the_smallest_volume( self ):
+
+        images = numpy.zeros( ( 5, 10, 10, 10 ) )
+        labels = numpy.zeros( ( 5, 10, 10, 10 ) )
+
+        mask = lambda m, d, k, j, i : (
+            ( ( m <= i <= m + d ) and ( m <= j <= m + d ) and ( k == 1 ) ) )
+
+        masks = numpy.array(
+            [ [ [ [ 1 if mask( 2 + m, m, k, j, i ) else 0
+                    for i in range( 0, 10 ) ]
+                  for j in range( 0, 10 ) ]
+                for k in range( 0, 3 ) ]
+              for m in range( 0, 4 ) ] )
+
+        volumes = [ data.Volume( images[ i ], labels[ i ], masks[ i ] ) for i in range( 0, 4 ) ]
+
+        span = int( ( ( 8 - 5 ) + 1 ) / 2 )
+        centres = [ ( 2+0 + 0/2 ), ( 2+1 + 1/2 ), ( 2+2 + 2/2 ), ( 2+3 + 3/2 ) ] 
+        minima = [ geometry.voxel( 1, int( c ) - span, int( c ) - span ) for c in centres ]
+        maxima = [ geometry.voxel( 1, int( c ) + span, int( c ) + span ) for c in centres ]
+
+        expected = numpy.array( ( minima, maxima ) )
+        computed = data.Batch.normalised_bounds_of_unmasked_regions( volumes )
+
+        pdb.set_trace()
+        self.assertTrue( numpy.array_equal( computed, expected ) )
+
+
+    def test_that_offsets_covers_the_exact_region_at_the_target_grid_points( self ):
+        pass
+
+
+    def test_that_patch_offsets_match_the_unmasked_region( self ):
+        pass
+
+
+    def test_that_image_patches_match_the_patch_offsets( self ):
+        pass
+
+
+    def test_that_label_patches_match_the_patch_offsets( self ):
+        pass
+
+
+    def test_that_mask_patches_match_the_patch_offsets( self ):
+        pass
+
+
+#---------------------------------------------------------------------------------------------------
+
+class ParametersTests( unittest.TestCase ):
+
+
+    def test_create_with_volume_count( self ):
+        pass
+
+
+    def test_with_patch_shape( self ):
+        pass
+
+
+    def test_with_patch_stride( self ):
+        pass
+
+
+    def test_with_constrain_to_mask( self ):
+        pass
+
+
+    def test_with_window_margin( self ):
+        pass
 
 
 #---------------------------------------------------------------------------------------------------
