@@ -244,15 +244,15 @@ class Batch( object ) :
         normalised_minima = voxel( centres - N.ceil( 0.5 * maximum_span ) )
         normalised_maxima = voxel( centres + N.ceil( 0.5 * maximum_span ) )
 
-        return N.array( ( normalised_minima, normalised_maxima ) )
+        return N.transpose( N.array( ( normalised_minima, normalised_maxima ) ), axes=(1, 0, 2) )
 
 
     @staticmethod
-    def offsets( volume, unmasked_bounds, parameters ) :
+    def offsets( volume_shape, unmasked_bounds, parameters ) :
 
         assert( len( parameters.patch_shape ) == 3 )
 
-        outer_bounds = cuboid( ( 0, 0, 0 ), volume.images.shape )
+        outer_bounds = cuboid( ( 0, 0, 0 ), volume_shape )
         inner_bounds = unmasked_bounds if parameters.constrain_to_mask else outer_bounds
 
         minima = inner_bounds[ 0 ]
@@ -290,7 +290,7 @@ class Batch( object ) :
         bounds = Batch.normalised_bounds_of_unmasked_regions( volumes )
 
         offsets_per_volume = [
-            Batch.offsets( v, bounds[ :, i ], parameters ) for i, v in enumerate( volumes ) ]
+            Batch.offsets( v.images.shape, bounds[ i ], parameters ) for i, v in enumerate( volumes ) ]
         self.__patch_offsets = offsets_per_volume
 
         image_data = [ volume.images for volume in volumes ]

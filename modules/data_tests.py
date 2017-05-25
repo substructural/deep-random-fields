@@ -41,6 +41,20 @@ class Mock :
             self.mask_patches = mask_patches
 
 
+def arrays_are_equal( computed, expected ):
+
+    equal = numpy.array_equal( computed, expected )
+    if not equal:
+        print( "\narrays differ\n" )
+        print( "expected:\n" + str( expected ) + "\n" )
+        print( "computed:\n" + str( computed ) + "\n" )
+        if computed.shape != expected.shape:
+            print( "shapes differ: {0} != {1}".format( computed.shape, expected.shape ) )
+        else:
+            print( "differences:\n" + str( computed - expected ) + "\n" )
+
+    return equal
+
 #---------------------------------------------------------------------------------------------------
 
 class VolumeTests( unittest.TestCase ) :
@@ -179,35 +193,111 @@ class BatchTests( unittest.TestCase ):
         volumes = [ data.Volume( images[ i ], labels[ i ], masks[ i ] ) for i in range( 0, 4 ) ]
 
         span = int( ( ( 8 - 5 ) + 1 ) / 2 )
-        centres = [ ( 2+0 + 0/2 ), ( 2+1 + 1/2 ), ( 2+2 + 2/2 ), ( 2+3 + 3/2 ) ] 
+        centres = [ ( 2+0 + 0/2 ), ( 2+1 + 1/2 ), ( 2+2 + 2/2 ), ( 2+3 + 3/2 ) ]
         minima = [ geometry.voxel( 1, int( c ) - span, int( c ) - span ) for c in centres ]
         maxima = [ geometry.voxel( 1, int( c ) + span, int( c ) + span ) for c in centres ]
 
-        expected = numpy.array( ( minima, maxima ) )
+        expected = numpy.transpose( numpy.array( ( minima, maxima ) ), axes=( 1, 0, 2 ) )
         computed = data.Batch.normalised_bounds_of_unmasked_regions( volumes )
 
-        pdb.set_trace()
-        self.assertTrue( numpy.array_equal( computed, expected ) )
+        self.assertTrue( arrays_are_equal( computed, expected ) )
 
 
     def test_that_offsets_covers_the_exact_region_at_the_target_grid_points( self ):
-        pass
+
+        parameters = data.Parameters( 1 ).with_patch_stride( 3 ).with_patch_shape( ( 6, 4, 3 ) )
+        volume_shape = ( 15, 16, 17 )
+        bounds = numpy.array( [ [ 0, 1, 2 ], [ 10, 10, 10 ] ] )
+
+        computed = data.Batch.offsets( volume_shape, bounds, parameters )
+        expected = numpy.array( [
+            [ 0, 1, 2 ],
+            [ 0, 1, 5 ],
+            [ 0, 1, 8 ],
+            [ 0, 4, 2 ],
+            [ 0, 4, 5 ],
+            [ 0, 4, 8 ],
+            [ 0, 7, 2 ],
+            [ 0, 7, 5 ],
+            [ 0, 7, 8 ],
+            [ 3, 1, 2 ],
+            [ 3, 1, 5 ],
+            [ 3, 1, 8 ],
+            [ 3, 4, 2 ],
+            [ 3, 4, 5 ],
+            [ 3, 4, 8 ],
+            [ 3, 7, 2 ],
+            [ 3, 7, 5 ],
+            [ 3, 7, 8 ] ] )
+
+        self.assertTrue( arrays_are_equal( expected, computed ) )
 
 
-    def test_that_patch_offsets_match_the_unmasked_region( self ):
-        pass
+    def test_that_patches_are_positioned_at_specified_offsets_and_have_correct_size( self ):
+
+        parameters = data.Parameters( 2 ).with_patch_shape( ( 1, 2, 2 ) )
+
+        I = J = K = range( 0, 5 )
+        V = range( 1, 3 )
+        volume_data = numpy.array( [
+            [ [ [ v*1000 + k*100 + j*10 + i for i in I ] for j in J ] for k in K ] for v in V ] )
+
+        offsets_per_volume = numpy.array( [
+            [ [ 2, 1, 0 ],
+              [ 3, 3, 1 ] ],
+            [ [ 0, 1, 2 ],
+              [ 1, 2, 3 ] ] ] )
+
+        expected_patches = numpy.array( [
+            [ [ [ [ 1210, 1211 ],
+                  [ 1220, 1221 ] ] ],
+              [ [ [ 1331, 1332 ],
+                  [ 1341, 1342 ] ] ] ],
+            [ [ [ [ 2012, 2013 ],
+                  [ 2022, 2023 ] ] ],
+              [ [ [ 2123, 2124 ],
+                  [ 2133, 2134 ] ] ] ] ] )
+
+        computed_patches = data.Batch.patches( volume_data, offsets_per_volume, parameters )
+
+        self.assertTrue( arrays_are_equal( expected_patches, computed_patches ) )
 
 
-    def test_that_image_patches_match_the_patch_offsets( self ):
-        pass
+    def test_that_patches_generated_for_batch_are_positioned_at_specified_offsets( self ):
 
+        I = J = K = range( 0, 5 )
+        V = range( 0, 2 )
+        bounds = [ [ [ 0, 1, 2 ], [ 0, 3, 4 ] ], [ [ 2, 1, 0 ], [ 2, 3, 2 ] ] ]
+        mask = lambda v, k, j, i : geometry.in_bounds( ( k, j, i ), bounds[ v ] )
 
-    def test_that_label_patches_match_the_patch_offsets( self ):
-        pass
+        mask_data = numpy.array(
+            [ [ [ [ mask( v, k, j, i ) for i in I ] for j in J ] for k in K ] for v in V ] )
 
+        image_data = numpy.array(
+            [ [ [ [ (v + 1)*1000 + k*100 + j*10 + i for i in I ] for j in J ] for k in K ] for v in V ] )
 
-    def test_that_mask_patches_match_the_patch_offsets( self ):
-        pass
+        label_data = image_data # in order to better distinguish the labels
+
+        volumes = [
+            None, # we will test the second batch, ignoring the first two volumes
+            None,
+            data.Volume( image_data[ 0 ], label_data[ 0 ], mask_data[ 0 ] ),
+            data.Volume( image_data[ 1 ], label_data[ 1 ], mask_data[ 1 ] ) ]
+
+        subjects = [ data.Subject( "s" + str( i ), "m", None ) for i in range( 0, 4 ) ]
+        aquisitions = [ Mock.Aquisition( "a" + str( i ), subjects[ i ], 99, volumes[ i ] ) for i in range( 0, 4 ) ]
+        parameters = data.Parameters( 2 ).with_patch_stride( 2 ).with_patch_shape( ( 1, 1, 1 ) )
+        batch_index = 1
+        batch = data.Batch( aquisitions, batch_index, parameters )
+
+        expected_patches = numpy.array( [
+            [ [[[1012]]], [[[1014]]],
+              [[[1032]]], [[[1034]]] ],
+            [ [[[2210]]], [[[2212]]],
+              [[[2230]]], [[[2232]]] ] ] )
+
+        self.assertTrue( arrays_are_equal( batch.image_patches, expected_patches ) )
+        self.assertTrue( arrays_are_equal( batch.label_patches, expected_patches ) )
 
 
 #---------------------------------------------------------------------------------------------------
@@ -216,23 +306,34 @@ class ParametersTests( unittest.TestCase ):
 
 
     def test_create_with_volume_count( self ):
-        pass
+
+        parameters = data.Parameters( 42 )
+        self.assertEqual( parameters.volume_count, 42 )
 
 
     def test_with_patch_shape( self ):
-        pass
+
+        parameters = data.Parameters( 42 ).with_patch_shape( ( 6, 9 ) )
+        self.assertEqual( parameters.patch_shape, ( 6, 9 ) )
 
 
     def test_with_patch_stride( self ):
-        pass
+
+        parameters = data.Parameters( 42 ).with_patch_stride( 7 )
+        self.assertEqual( parameters.patch_stride, 7 )
 
 
     def test_with_constrain_to_mask( self ):
-        pass
+
+        for flag in [ True, False ]:
+            parameters = data.Parameters( 42 ).with_constrain_to_mask( flag )
+            self.assertEqual( parameters.constrain_to_mask, flag )
 
 
     def test_with_window_margin( self ):
-        pass
+
+        parameters = data.Parameters( 42 ).with_window_margin( 3 )
+        self.assertEqual( parameters.window_margin, 3 )
 
 
 #---------------------------------------------------------------------------------------------------
