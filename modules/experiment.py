@@ -35,13 +35,15 @@ class Experiment( object ) :
             label_conversion,
             dataset,
             batch_parameters,
-            experiment_parameters ) :
+            experiment_parameters,
+            output_module ) :
 
         self.__model = model
         self.__label_conversion = label_conversion
         self.__dataset = dataset
         self.__batch_parameters = batch_parameters
         self.__parameters = experiment_parameters
+        self.__output = output_module
 
 
     @property
@@ -74,33 +76,10 @@ class Experiment( object ) :
         return self.__label_conversion
 
 
-    def save_array_output( self, output, output_id ):
+    @property
+    def output( self ) :
 
-        directory = self.parameters.output_path
-        filename = self.parameters.experiment_id + "-" + output_id + ".npy"
-
-        if not os.path.exists( directory ):
-            os.mkdir( directory )
-
-        numpy.save( directory + "/" + filename, output, allow_pickle=False )
-
-
-    def on_batch_event( self, batch_index, training_output, training_costs ) :
-
-        print( "\nbatch", batch_index, ":\n", training_costs )
-
-
-    def on_epoch_event( self, epoch_index, validation_output, validation_costs, training_costs ) :
-
-        index_count = self.parameters.index_count
-        volumes = self.label_conversion.labels_for_volumes( validation_output )
-        masks = labels.dense_volume_indices_to_dense_volume_masks( volumes, index_count )
-
-        self.save_array_output( volumes, str( epoch_index ) + "-volumes" )
-        self.save_array_output( masks, str( epoch_index ) + "-masks" )
-
-        print( "\nepoch", epoch_index, ":\n", validation_costs )
-        # TODO : we should calculate dice scores for the masks and output this here
+        return self.__output
 
 
     def run( self ) :
@@ -117,8 +96,39 @@ class Experiment( object ) :
             self.parameters.cost_threshold,
             self.parameters.epoch_count,
             batch_count,
-            self.on_batch_event,
-            self.on_epoch_event )
+            self.output.on_batch_event,
+            self.output.on_epoch_event )
 
 
 #---------------------------------------------------------------------------------------------------
+
+class ExperimentOutput( object ):
+
+
+    def save_array_output( self, output, output_id ):
+
+        directory = self.parameters.output_path
+        filename = self.parameters.experiment_id + "-" + output_id + ".npy"
+
+        if not os.path.exists( directory ):
+            os.mkdir( directory )
+
+        numpy.save( directory + "/" + filename, output, allow_pickle=False )
+
+
+    def on_batch_event( self, batch_index, training_output, training_costs ) :
+
+        print( "\nbatch {0:03d}: {1:0.5f}".format( batch_index training_costs ) )
+
+
+    def on_epoch_event( self, epoch_index, validation_output, validation_costs, training_costs ) :
+
+        index_count = self.parameters.index_count
+        volumes = self.label_conversion.labels_for_volumes( validation_output )
+        masks = labels.dense_volume_indices_to_dense_volume_masks( volumes, index_count )
+
+        self.save_array_output( volumes, str( epoch_index ) + "-volumes" )
+        self.save_array_output( masks, str( epoch_index ) + "-masks" )
+
+        print( "\nepoch", epoch_index, ":\n", validation_costs )
+        # TODO : we should calculate dice scores for the masks and output this here
