@@ -52,10 +52,12 @@ class CategoricalCrossEntropyCost( CostFunction ) :
 
     def __call__( self, outputs, labels, parameters ) :
 
-        cross_entropy = (-1) * T.mean( labels * T.log( outputs ) )
-        L1 = self.regularise_L1( parameters )
-        L2 = self.regularise_L2_square( parameters )
-        return cross_entropy + L1 + L2
+        distribution = len( labels.shape ) - 1
+        cross_entropy = (-1) * T.sum( labels * T.log( outputs ), axis=distribution )
+        mean_cross_entropy = T.mean( cross_entropy )
+        penalty_l1 = self.regularise_L1( parameters )
+        penalty_l2 = self.regularise_L2_square( parameters )
+        return mean_cross_entropy + penalty_l1 + penalty_l2
 
 
 #---------------------------------------------------------------------------------------------------
