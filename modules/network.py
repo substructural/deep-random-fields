@@ -184,7 +184,7 @@ def train_for_epoch( model, load_training_set, batch_count, on_batch_event = nul
 
     for batch_index in range( 0, batch_count ) :
 
-        training_inputs, training_labels = load_training_set( batch_index )
+        training_inputs, training_labels, patch_grid = load_training_set( batch_index )
         training_output, training_cost = model.optimise( training_inputs, training_labels )
 
         on_batch_event( batch_index, training_output, training_cost )
@@ -213,11 +213,18 @@ def train(
         training_costs_for_epoch = train_for_epoch( model, load_training_set, batch_count, on_batch_event )
         training_costs.append( training_costs_for_epoch )
 
-        validation_inputs, validation_labels = load_validation_set( epoch )
+        validation_inputs, validation_labels, patch_grid = load_validation_set( epoch )
         validation_output, validation_cost = model.validate( validation_inputs, validation_labels )
         validation_costs.append( validation_cost )
 
-        on_epoch_event( epoch, validation_output, validation_cost, training_costs_for_epoch )
+        on_epoch_event(
+            epoch,
+            model,
+            patch_grid,
+            validation_labels,
+            validation_output,
+            validation_cost,
+            training_costs_for_epoch )
 
         network_has_overfit = has_overfit(
             validation_costs,
@@ -233,3 +240,6 @@ def train(
             break
 
     return validation_output, validation_costs, training_costs
+
+
+#---------------------------------------------------------------------------------------------------

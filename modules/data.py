@@ -284,6 +284,15 @@ class Batch( object ) :
         return patches
 
 
+    @staticmethod
+    def patch_grid_shape( bounds, parameters ) :
+
+        outer_span = bounds[ 1 ] - bounds[ 0 ] + voxel( 1, 1, 1 )
+        inner_span = outer_span - parameters.patch_shape
+        grid_shape = 1 + ( inner_span / parameters.patch_stride ).astype( 'int32' )
+        return grid_shape
+
+
     def __init__( self, aquisitions, batch_index, parameters ) :
 
         volumes = Batch.volumes_for_batch( aquisitions, batch_index, parameters )
@@ -292,6 +301,7 @@ class Batch( object ) :
         offsets_per_volume = [
             Batch.offsets( v.images.shape, bounds[ i ], parameters ) for i, v in enumerate( volumes ) ]
         self.__patch_offsets = offsets_per_volume
+        self.__patch_grid_shape = Batch.patch_grid_shape( bounds[ 0 ], parameters )
 
         image_data = [ volume.images for volume in volumes ]
         self.__image_patches = Batch.patches( image_data, offsets_per_volume, parameters )
@@ -307,6 +317,12 @@ class Batch( object ) :
     def patch_offsets( self ) :
 
         return self.__patch_offsets
+
+
+    @property
+    def patch_grid_shape_for_batch( self ):
+
+        return self.__patch_grid_shape
 
 
     @property
@@ -350,7 +366,7 @@ class Accessor( object ) :
 
         batch = Batch( data_subset, batch_index, batch_parameters )
         label_distribution = self.__label_conversion.distribution_for_patches( batch.label_patches )
-        return ( batch.image_patches, label_distribution )
+        return ( batch.image_patches, label_distribution, batch.patch_grid_shape )
 
 
     def training_images_and_labels( self, batch_index ) :

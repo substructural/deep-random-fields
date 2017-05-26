@@ -296,6 +296,9 @@ class BatchTests( unittest.TestCase ):
             [ [[[2210]]], [[[2212]]],
               [[[2230]]], [[[2232]]] ] ] )
 
+        expected_grid = numpy.array(( 1, 2, 2 ))
+
+        self.assertTrue( arrays_are_equal( batch.patch_grid_shape_for_batch, expected_grid ) )
         self.assertTrue( arrays_are_equal( batch.image_patches, expected_patches ) )
         self.assertTrue( arrays_are_equal( batch.label_patches, expected_patches ) )
 
