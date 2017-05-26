@@ -5,80 +5,85 @@
 
 #---------------------------------------------------------------------------------------------------
 
+import os
+import tempfile
 import unittest
-from experiment import Experiment
-import network
-import layer
-import activation
+
+import numpy
+
+import experiment
+import labels
 
 
 #---------------------------------------------------------------------------------------------------
 
-class ExperimentTestHarness( Experiment ) :
-
-    def __init__(
-            self,
-            dataset,
-            architecture,
-            cost_function,
-            optimiser,
-            training_batch_parameters,
-            validation_batch_parameters,
-            experiment_parameters,
-            expected_labels ) :
-
-        super().__init__(
-            dataset,
-            architecture,
-            cost_function,
-            optimiser,
-            training_batch_parameters,
-            validation_batch_parameters,
-            experiment_parameters )
-
-        self.expected_labels = expected_labels
-        self.on_batch_events = []
-        self.on_epoch_events = []
+class ResultsTests( unittest.TestCase ):
 
 
-    def format_labels( self, patches ) :
+    def test_save_array_output( self ):
 
-        return self.expected_labels
+        I = J = K = range( 0, 100 )
+        original_data = numpy.array( [ [ [ k*100 + j*10 + i for i in I ] for j in J ] for k in K ] )
+
+        with tempfile.TemporaryDirectory() as base_path:
+            temp_path = base_path + "/new-subdirectory"
+            conversion = labels.DenseLabelConversions( 3 )
+            parameters = experiment.Parameters( "42", temp_path, 1, 0.01, 3 )
+            results = experiment.Results( conversion, parameters )
+            tag = "save-array-test"
+
+            results.save_array_output( original_data, tag )
+            reconstituted_data = numpy.load( results.saved_object_file_name( tag ) )
+            self.assertTrue( numpy.array_equal( reconstituted_data, original_data ) )
+
+            results.save_array_output( original_data, tag, 42 )
+            reconstituted_data_42 = numpy.load( results.saved_object_file_name( tag, 42 ) )
+            self.assertTrue( numpy.array_equal( reconstituted_data_42, original_data ) )
 
 
-    def on_batch_event( self, batch_index, training_output, training_costs ) :
+    def test_on_epoch_event( self ):
 
-        self.on_batch_events.append( ( batch_index, training_output, training_costs ) )
+        classes = 2
+        I = J = range( 0, 20 )
+        K = V = range( 0, 1 )
+        patch_grid_shape = numpy.array( ( 1, 20, 20 ) )
+        validation_labels = numpy.array( [
+            [ [ [ ( 1.0, 0.0 ) if i < 10 else ( 0.0, 1.0 ) for i in I ] for j in J ] for k in K ]
+            for v in V ] )
+        validation_output = numpy.array( [
+            [ [ [ ( 0.8, 0.2 ) if i < 12 else ( 0.2, 0.8 ) for i in I ] for j in J ] for k in K ]
+            for v in V ] )
+        validation_cost = 0.2
+        training_costs = [ 0.5, 0.3, 0.2, 0.15, 0.125 ]
+        dice_scores = [ ( 2.0 * 10 ) / ( 2.0 * 10 + 2 + 0 ), ( 2.0 * 8 ) / ( 2.0 * 8 + 0 + 2 ) ]
+        model = [ 6, 9, 42 ]
 
+        with tempfile.TemporaryDirectory() as experiment_path:
 
-    def on_epoch_event( self, epoch_index, validation_output, validation_costs, training_costs ) :
+            epoch = 0
+            conversion = labels.SparseLabelConversions( classes )
+            parameters = experiment.Parameters( "42", experiment_path, 1, 0.01, classes )
+            results = experiment.Results( conversion, parameters )
 
-        self.on_epoch_events.append( ( batch_index, validationn_output, validation_costs, training_costs ) )
+            results.on_epoch_event(
+                epoch,
+                model,
+                patch_grid_shape,
+                validation_labels.reshape( 1, 1 * 20 * 20, classes ),
+                validation_output.reshape( 1, 1 * 20 * 20, classes ),
+                validation_cost,
+                training_costs )
 
+            self.assertTrue( os.path.exists( results.saved_object_file_name( "model", epoch ) ) )
+            self.assertTrue( os.path.exists( results.saved_object_file_name( "output", epoch ) ) )
+            self.assertTrue( os.path.exists( results.saved_object_file_name( "labels", epoch ) ) )
+            self.assertTrue( os.path.exists( results.saved_object_file_name( "masks", epoch ) ) )
+            for c in range( 0, classes ):
+                self.assertTrue( os.path.exists( results.saved_object_file_name( "class-"+str( c ), epoch ) ) )
 
-
-#---------------------------------------------------------------------------------------------------
-
-class BaseExperimentTests( unittest.TestCase ) :
-
-    def test_that_experiment_loads_the_correct_training_batch( self ) :
-
-        layers = [
-            layers.DenseLayer( ( 2, 2 ), activation.LeakyRectifiedLinearUnit( 0.1 ) ),
-            layers.Softmax() ]
-        architecture = network.Architecture( layers, 2, 1 )
-
-        cross_entropy_cost_function = optimiser.CategoricalCrossEntropyCost( 0.1, 0.1 )
-        gradient_descent_optimiser = optimiser.SimpleGradientDescentOptimiser( 0.1 )
-        experiment = ExperimentTestHarness(
-            dataset,
-            architecture,
-            cross_entropy_cost_function,
-            gradient_descent_optimiser,
-            training_batch_parameters,
-            validation_batch_parameters,
-            experiment_parameters,
-        )
+            self.assertEqual( results.training_costs, [ training_costs ] )
+            self.assertEqual( results.validation_costs, [ validation_cost ] )
+            self.assertEqual( results.dice_scores, [ dice_scores ] )
 
 
 
