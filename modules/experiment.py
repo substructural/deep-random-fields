@@ -21,9 +21,9 @@ class Parameters( object ) :
 
         self.experiment_id = experiment_id
         self.output_path = output_path
-        self.class_count = class_count
-        self.cost_threshold = cost_threshold
         self.epoch_count = epoch_count
+        self.cost_threshold = cost_threshold
+        self.class_count = class_count
 
 
 #---------------------------------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class Experiment( object ) :
         data_accessor = data.Accessor( self.dataset, self.batch_parameters, self.label_conversion )
         training_set_size = len( self.dataset.training_set )
         volumes_per_batch = self.batch_parameters.volume_count
-        batch_count = training_set_size / volumes_per_batch
+        batch_count = int( training_set_size / volumes_per_batch )
 
         network.train(
             self.model,

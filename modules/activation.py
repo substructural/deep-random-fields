@@ -14,7 +14,7 @@ class LeakyRectifiedLinearUnit( object ) :
 
     def __init__( self, leakiness ) :
 
-        self.__leakiness = T.TensorConstant( leakiness )
+        self.__leakiness = leakiness
 
 
     @property

@@ -25,7 +25,7 @@ class Layer( object ) :
     ''' A single transformation within the network. '''
 
 
-    def graph( self, model_parameters, inputs ) :
+    def graph( self, parameters, inputs ) :
 
         raise NotImplementedError
 
@@ -104,7 +104,8 @@ class Model( object ) :
             learned_parameter_values if learned_parameter_values is not None
             else architecture.initial_parameter_values( seed ) )
 
-        parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ] for subset in initial_values ]
+        parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ]
+                       for subset in initial_values ]
 
         input_broadcast_pattern = ( False, ) * architecture.input_dimensions
         input_type = T.tensor.TensorType( T.config.floatX, input_broadcast_pattern )
@@ -205,10 +206,11 @@ def train(
         on_batch_event = null_function,
         on_epoch_event = null_function ) :
 
+    validation_output = None
     validation_costs = []
     training_costs = []
 
-    for epoch in range( 0, epoch_count ) :
+    for epoch in range( 0, int( epoch_count ) ) :
 
         training_costs_for_epoch = train_for_epoch( model, load_training_set, batch_count, on_batch_event )
         training_costs.append( training_costs_for_epoch )

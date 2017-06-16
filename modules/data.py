@@ -394,8 +394,7 @@ class Parameters( object ) :
             patch_shape = ( 1, 1 ),
             patch_stride = 1,
             window_margin = 0,
-            constrain_to_mask = True,
-            use_dense_labels = True ) :
+            constrain_to_mask = True ):
 
         self.volume_count = volume_count
         self.patch_shape = patch_shape

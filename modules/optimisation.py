@@ -45,15 +45,21 @@ class CostFunction( object ) :
 class CategoricalCrossEntropyCost( CostFunction ) :
 
 
-    def __init__( self, weight_L1, weight_L2 ) :
+    def __init__( self, distribution_axis, weight_L1, weight_L2 ) :
 
         super( CategoricalCrossEntropyCost, self ).__init__( weight_L1, weight_L2 )
+        self.__distribution_axis = distribution_axis
 
+
+    @property
+    def distribution_axis( self ):
+
+        return self.__distribution_axis
+    
 
     def __call__( self, outputs, labels, parameters ) :
 
-        distribution = len( labels.shape ) - 1
-        cross_entropy = (-1) * T.sum( labels * T.log( outputs ), axis=distribution )
+        cross_entropy = (-1) * T.sum( labels * T.log( outputs ), axis=self.distribution_axis )
         mean_cross_entropy = T.mean( cross_entropy )
         penalty_l1 = self.regularise_L1( parameters )
         penalty_l2 = self.regularise_L2_square( parameters )
