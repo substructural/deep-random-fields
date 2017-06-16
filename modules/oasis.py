@@ -111,7 +111,7 @@ class OasisDataSet( data.Dataset ):
         aquisitions = [ OasisAquisition( root_path, id ) for id in aquisition_ids ]
 
         super( OasisDataSet, self ).__init__(
-            aquisitions, training_count, validation_count, testing_count, random_seed, log )
+           aquisitions, training_count, validation_count, testing_count, random_seed, log )
 
 
 #----------------------------------------------------------------------------------------------------
@@ -121,8 +121,8 @@ class OasisDataSet( data.Dataset ):
 if __name__ == '__main__' :
 
     file_path = sys.argv[ 1 ] 
-    training_count = int( sys.argv[ 2 ] )
-    dataset = OasisDataSet( file_path, training_count, 0, 0, 42 )
+    volume_count = int( sys.argv[ 2 ] )
+    dataset = OasisDataSet( file_path, volume_count, 0, 0, 42 )
 
     for aquisition in dataset.training_set :
 
@@ -145,7 +145,7 @@ if __name__ == '__main__' :
     #plot.show()
 
     parameters = data.Parameters( 
-        volume_count = int( training_count / 5 ),
+        volume_count = volume_count,
         patch_shape = geometry.voxel( 1, 32, 32 ),
         patch_stride = 4 )
     

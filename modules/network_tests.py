@@ -213,7 +213,7 @@ class ModelTests( unittest.TestCase ) :
                 actual_value = model.parameters[ i ][ j ].get_value()
                 error = abs( expected_value - actual_value )
                 tolerance = 1e-5
-                self.assertTrue( error < 1e-5 )
+                self.assertTrue( error < tolerance )
 
 #---------------------------------------------------------------------------------------------------
 
@@ -224,6 +224,7 @@ class TrainingTests( unittest.TestCase ) :
 
         training_inputs = [ 1, 2, 3 ]
         training_labels = [ 2, 3, 5 ]
+        patch_grid_shape = ( 3, 1 )
 
         mock_model = Mock.ModelWithPresetOutputs(
             training_outputs   = [ [ 100, 101, 102 ], [ 200, 201, 202 ] ],
@@ -232,7 +233,9 @@ class TrainingTests( unittest.TestCase ) :
             validation_costs   = [ 1.0, 0.6 ] )
 
         def load_training_set( i ) :
-            return ( numpy.array( training_inputs[ i ] ), numpy.array( training_labels[ i ] ) )
+            return ( numpy.array( training_inputs[ i ] ),
+                     numpy.array( training_labels[ i ] ),
+                     patch_grid_shape )
 
         class on_batch_event :
 
@@ -257,12 +260,42 @@ class TrainingTests( unittest.TestCase ) :
         self.assertEqual( mock_model.labels_passed_to_optimise, training_labels )
 
 
+    class OnEpochEvent( object ):
+
+        def __init__( self ):
+            self.validation_labels_passed_event = []
+            self.validation_outputs_passed_to_event = []
+            self.validation_costs_passed_to_event = []
+            self.training_costs_passed_to_event = []
+            self.patch_grid_shape_passed_to_event = None
+            self.models_passed_to_event = []
+            self.epochs_passed_to_event = []
+
+        def callback( self,
+                      epoch,
+                      model,
+                      patch_grid_shape,
+                      validation_labels,
+                      validation_output,
+                      validation_costs,
+                      training_costs ) :
+            self.epochs_passed_to_event.append( epoch )
+            self.models_passed_to_event.append( model )
+            self.patch_grid_shape_passed_to_event = patch_grid_shape
+            self.validation_labels_passed_event.append( validation_labels )
+            self.validation_outputs_passed_to_event.append( validation_output ) 
+            self.validation_costs_passed_to_event.append( validation_costs )
+            self.training_costs_passed_to_event.append( training_costs )
+            self.patch_grid_shape_passed_to_event = patch_grid_shape
+
+
     def test_that_train_terminates_on_convergence( self ) :
 
         training_inputs = [ 1, 2, 3 ]
         training_labels = [ 2, 3, 5 ]
         validation_inputs = [ 4, 5, 6, 7 ]
         validation_labels = [ 7, 11, 13, 17 ]
+        patch_grid_shape = ( 3, 1 )
 
         mock_model = Mock.ModelWithPresetOutputs(
             training_outputs   = [ [ 100, 101, 102 ], [ 200, 201, 202 ], [ 300, 301, 302 ], [ 400, 401, 402 ] ],
@@ -271,22 +304,16 @@ class TrainingTests( unittest.TestCase ) :
             validation_costs   = [ 0.5, 0.2, 0.1, 0.5 ] )
 
         def load_training_set( j ) : 
-            return ( numpy.array( training_inputs[ j ] ), numpy.array( training_labels[ j ] ) )
+            return ( numpy.array( training_inputs[ j ] ),
+                     numpy.array( training_labels[ j ] ),
+                     patch_grid_shape )
 
         def load_validation_set( i ) :
-            return ( numpy.array( validation_inputs[ i ] ), numpy.array( validation_labels[ i ] ) )
+            return ( numpy.array( validation_inputs[ i ] ),
+                     numpy.array( validation_labels[ i ] ),
+                     patch_grid_shape )
 
-        class on_epoch_event :
-
-            validation_outputs_passed_to_event = []
-            validation_costs_passed_to_event = []
-            training_costs_passed_to_event = []
-
-            @staticmethod
-            def callback( i, validation_output, validation_costs, training_costs ) :
-                on_epoch_event.validation_outputs_passed_to_event.append( validation_output ) 
-                on_epoch_event.validation_costs_passed_to_event.append( validation_costs )
-                on_epoch_event.training_costs_passed_to_event.append( training_costs )
+        on_epoch_event = TrainingTests.OnEpochEvent()
 
         validation_output, validation_cost, training_costs = network.train(
             mock_model,
@@ -301,6 +328,7 @@ class TrainingTests( unittest.TestCase ) :
 
         self.assertEqual( validation_output, mock_model.validation_outputs[ 2 ] )
         self.assertEqual( validation_cost, mock_model.validation_costs[ 0 : 3 ] )
+        self.assertEqual( on_epoch_event.validation_labels_passed_event, validation_labels[ 0 : 3 ] )
         self.assertEqual( on_epoch_event.validation_outputs_passed_to_event, mock_model.validation_outputs[ 0 : 3 ] )
         self.assertEqual( on_epoch_event.validation_costs_passed_to_event, mock_model.validation_costs[ 0 : 3 ] )
         self.assertEqual( on_epoch_event.training_costs_passed_to_event, mock_model.training_costs[ 0 : 3 ] )
@@ -315,6 +343,7 @@ class TrainingTests( unittest.TestCase ) :
         training_labels = [ 2, 3, 5 ]
         validation_inputs = [ 4, 5, 6, 7 ]
         validation_labels = [ 7, 11, 13, 17 ]
+        patch_grid_shape = ( 2, 2 )
 
         mock_model = Mock.ModelWithPresetOutputs(
             training_outputs   = [ [ 100, 101, 102 ], [ 200, 201, 202 ], [ 300, 301, 302 ], [ 400, 401, 402 ] ],
@@ -323,22 +352,16 @@ class TrainingTests( unittest.TestCase ) :
             validation_costs   = [ 0.5, 0.2, 0.4, 0.5 ] )
 
         def load_training_set( j ) : 
-            return ( numpy.array( training_inputs[ j ] ), numpy.array( training_labels[ j ] ) )
+            return ( numpy.array( training_inputs[ j ] ),
+                     numpy.array( training_labels[ j ] ),
+                     patch_grid_shape )
 
         def load_validation_set( i ) :
-            return ( numpy.array( validation_inputs[ i ] ), numpy.array( validation_labels[ i ] ) )
+            return ( numpy.array( validation_inputs[ i ] ),
+                     numpy.array( validation_labels[ i ] ),
+                     patch_grid_shape )
 
-        class on_epoch_event :
-
-            validation_outputs_passed_to_event = []
-            validation_costs_passed_to_event = []
-            training_costs_passed_to_event = []
-
-            @staticmethod
-            def callback( i, validation_output, validation_costs, training_costs ) :
-                on_epoch_event.validation_outputs_passed_to_event.append( validation_output ) 
-                on_epoch_event.validation_costs_passed_to_event.append( validation_costs )
-                on_epoch_event.training_costs_passed_to_event.append( training_costs )
+        on_epoch_event = TrainingTests.OnEpochEvent()
 
         validation_output, validation_cost, training_costs = network.train(
             mock_model,
