@@ -229,7 +229,7 @@ class PoolingLayer( network.Layer ):
         mode = self.pooling_type.value
         pool = T.tensor.signal.pool.pool_3d if in_3d else T.tensor.signal.pool.pool_2d
 
-        return pool( inputs, self.factor, stride=self.stride, mode=mode )
+        return pool( inputs, self.factor, stride=self.stride, mode=mode, ignore_border=True )
         
     
 

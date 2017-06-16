@@ -14,6 +14,7 @@ import numpy
 
 import data 
 import geometry
+import output
 
 import pdb
 
@@ -94,19 +95,23 @@ class OasisAquisition( data.Aquisition ):
 class OasisDataSet( data.Dataset ):
 
 
-    def __init__( self, root_path, training_count, validation_count, testing_count, random_seed ):
+    def __init__( self, root_path, training_count, validation_count, testing_count, random_seed, maybe_log = None ):
 
+        log = maybe_log if maybe_log else output.Log()
+        log.subsection( "loading OASIS dataset" )
+        
+        log.entry( "scanning for aquisitions" )
         aquisition_ids = os.listdir( root_path )
-
         aquisitions_found = len( aquisition_ids )
         assert( aquisitions_found > 0 )
 
+        log.entry( "loading aquisition headers" )
         aquisitions_requested = training_count + validation_count + testing_count 
         aquisitions_to_read = min( aquisitions_found, aquisitions_requested )        
         aquisitions = [ OasisAquisition( root_path, id ) for id in aquisition_ids ]
 
         super( OasisDataSet, self ).__init__(
-            aquisitions, training_count, validation_count, testing_count, random_seed )
+            aquisitions, training_count, validation_count, testing_count, random_seed, log )
 
 
 #----------------------------------------------------------------------------------------------------

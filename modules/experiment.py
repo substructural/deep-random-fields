@@ -10,6 +10,7 @@ from numpy import logical_not as negation
 import data
 import labels
 import network
+import output
 
 
 #---------------------------------------------------------------------------------------------------
@@ -38,7 +39,8 @@ class Experiment( object ) :
             dataset,
             batch_parameters,
             experiment_parameters,
-            results = None ) :
+            results = None,
+            log = None ) :
 
         self.__model = model
         self.__label_conversion = label_conversion
@@ -47,6 +49,8 @@ class Experiment( object ) :
         self.__parameters = experiment_parameters
         self.__results = ( results if results is not None else
                            Results( label_conversion, experiment_parameters ) )
+
+        self.__log = log if log else output.Log()
 
 
     @property
@@ -85,7 +89,21 @@ class Experiment( object ) :
         return self.__results
 
 
+    @property
+    def log( self ) :
+
+        return self.__log
+
+
     def run( self ) :
+
+        self.log.section( "experiment" )
+        
+        self.log.subsection( "experiment parameters" )
+        self.log.record( self.parameters )
+
+        self.log.subsection( "batch parameters" )
+        self.log.record( self.batch_parameters )
 
         data_accessor = data.Accessor( self.dataset, self.batch_parameters, self.label_conversion )
         training_set_size = len( self.dataset.training_set )
@@ -96,11 +114,15 @@ class Experiment( object ) :
             self.model,
             data_accessor.training_images_and_labels,
             data_accessor.validation_images_and_labels,
-            self.parameters.cost_threshold,
             self.parameters.epoch_count,
             batch_count,
-            self.results.on_batch_event,
-            self.results.on_epoch_event )
+            self.parameters.cost_threshold,
+            on_batch_event = self.results.on_batch_event,
+            on_epoch_event = self.results.on_epoch_event,
+            maybe_log = self.log
+        )
+
+        self.log.entry( "complete" )
 
 
 #---------------------------------------------------------------------------------------------------
@@ -108,13 +130,20 @@ class Experiment( object ) :
 class Results( object ):
 
 
-    def __init__( self, label_conversion, parameters ):
+    def __init__( self, label_conversion, parameters, maybe_log = None ):
 
         self.__parameters = parameters
         self.__label_conversion = label_conversion
         self.__training_costs = []
         self.__validation_costs = []
         self.__dice_scores = []
+        self.__log = maybe_log if maybe_log else output.Log()
+
+
+    @property
+    def log( self ):
+
+        return self.__log
 
 
     @property
@@ -163,12 +192,14 @@ class Results( object ):
 
         filepath = self.saved_object_file_name( object_type, epoch )
         numpy.save( filepath, output, allow_pickle=False )
+
+        self.log.item( "saved " + object_type + " to " + filepath )
         return filepath
 
 
     def on_batch_event( self, batch_index, training_output, training_costs ) :
 
-        print( "\nbatch {0:03d}: {1:0.5f}".format( batch_index, training_costs ) )
+        self.log.item( "batch {0:03d} costs: {1:0.5f}".format( batch_index, training_costs ) )
 
 
     def on_epoch_event(
@@ -181,7 +212,7 @@ class Results( object ):
             validation_cost,
             training_costs ) :
 
-        print( "\nepoch", epoch_index, ":\n", validation_cost )
+        self.log.subsection( "recording results for epoch " + str( epoch_index ) )
 
         classes = self.parameters.class_count
         volumes = validation_labels.shape[ 0 ]
@@ -190,6 +221,11 @@ class Results( object ):
         test_masks = labels.dense_volume_indices_to_dense_volume_masks( test_labels, classes )
         true_masks = labels.dense_volume_indices_to_dense_volume_masks( true_labels, classes )
         mean_dice_scores_per_class = Metrics.mean_dice_score_per_class( test_masks, true_masks )
+
+        self.log.item( "validation cost:" + str( validation_cost ) )
+        self.log.item( "mean dice scores per class:" )
+        self.log.record( { "class " + str( i ): mean_dice_scores_per_class[ i ]
+                           for i in range( 0, len( mean_dice_scores_per_class ) ) } )
 
         self.save_array_output( model, "model", epoch_index )
         self.save_array_output( validation_output, "output", epoch_index )

@@ -9,6 +9,7 @@ import numpy as N
 import numpy.random
 
 import data
+import output
 
 import pdb
 
@@ -179,13 +180,22 @@ def has_overfit( costs, k = 2, n = 4 ) :
         return False
 
 
-def train_for_epoch( model, load_training_set, batch_count, on_batch_event = null_function ) :
+def train_for_epoch(
+        model,
+        load_training_set,
+        batch_count,
+        on_batch_event = null_function,
+        maybe_log = None ) :
 
+    log = maybe_log if maybe_log else output.Log()
     training_costs = []
 
     for batch_index in range( 0, batch_count ) :
 
+        log.subsection( "loading data for batch " + str( batch_index ) )
         training_inputs, training_labels, patch_grid = load_training_set( batch_index )
+
+        log.subsection( "training batch " + str( batch_index ) )
         training_output, training_cost = model.optimise( training_inputs, training_labels )
 
         on_batch_event( batch_index, training_output, training_cost )
@@ -204,7 +214,11 @@ def train(
         tail_length_for_convergence = 3,
         tail_length_for_overfitting = 3,
         on_batch_event = null_function,
-        on_epoch_event = null_function ) :
+        on_epoch_event = null_function,
+        maybe_log = None ) :
+
+    log = maybe_log if maybe_log else output.Log()
+    log.section( "training" )
 
     validation_output = None
     validation_costs = []
@@ -212,9 +226,11 @@ def train(
 
     for epoch in range( 0, int( epoch_count ) ) :
 
-        training_costs_for_epoch = train_for_epoch( model, load_training_set, batch_count, on_batch_event )
+        log.subsection( "epoch " + str( epoch ) )
+        training_costs_for_epoch = train_for_epoch( model, load_training_set, batch_count, on_batch_event, log )
         training_costs.append( training_costs_for_epoch )
 
+        log.entry( "performing validation for epoch " + str( epoch ) )
         validation_inputs, validation_labels, patch_grid = load_validation_set( epoch )
         validation_output, validation_cost = model.validate( validation_inputs, validation_labels )
         validation_costs.append( validation_cost )
@@ -237,6 +253,10 @@ def train(
             validation_costs,
             cost_threshold_for_convergence,
             tail_length_for_convergence )
+
+        log.entry( "evaluating continuation")
+        log.record( { 'network has overfit': network_has_overfit,
+                      'network_has_converged': network_has_converged })
 
         if network_has_overfit or network_has_converged:
             break

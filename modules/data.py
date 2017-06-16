@@ -11,6 +11,7 @@ import theano as T
 import random
 
 from geometry import cuboid, voxel
+import output
 
 import pdb
 
@@ -169,10 +170,20 @@ class Volume( object ):
 class Dataset( object ) :
 
 
-    def __init__( self, aquisitions, training_count, validation_count, testing_count, random_seed ) :
+    def __init__(
+            self,
+            aquisitions,
+            training_count,
+            validation_count,
+            testing_count,
+            random_seed,
+            maybe_log = None ) :
 
         assert( len( aquisitions ) >= training_count + validation_count + testing_count )
+        log = maybe_log if maybe_log else output.Log()
+        log.subsection( "partitioning dataset" )
 
+        log.entry( "sorting by subject" )
         subjects = [ s for s in set( [ a.subject.subject_id for a in aquisitions ] ) ]
         aquisitions_for = lambda s : [ a for a in aquisitions if a.subject.subject_id == s ]
         aquisitions_by_subject = { s : aquisitions_for( s ) for s in subjects }
@@ -180,6 +191,7 @@ class Dataset( object ) :
         subsets = [ [], [], [] ]
         targets = [ training_count, validation_count, testing_count ]
 
+        log.entry( "allocating subjects to training, validation and test" )
         random.seed( random_seed )
         for subject in random.sample( subjects, len( subjects ) ) :
 
@@ -191,6 +203,7 @@ class Dataset( object ) :
                     subsets[ subset ] += aquisitions_to_add
                     break
 
+        log.entry( "randomising order" )
         self.__training_set = random.sample( subsets[ 0 ], len( subsets[ 0 ] ) )
         self.__validation_set = random.sample( subsets[ 1 ], len( subsets[ 1 ] ) )
         self.__testing_set = random.sample( subsets[ 2 ], len( subsets[ 2 ] ) )
@@ -293,22 +306,32 @@ class Batch( object ) :
         return grid_shape
 
 
-    def __init__( self, aquisitions, batch_index, parameters ) :
+    def __init__( self, aquisitions, batch_index, parameters, maybe_log = None ) :
 
+        log = maybe_log if maybe_log else output.Log()
+        log.entry( "constructing batch" )
+        
+        log.item( "acquiring volumes for batch" )
         volumes = Batch.volumes_for_batch( aquisitions, batch_index, parameters )
+
+        log.item( "computing bounds" )
         bounds = Batch.normalised_bounds_of_unmasked_regions( volumes )
 
+        log.item( "computing offsets" )
         offsets_per_volume = [
             Batch.offsets( v.images.shape, bounds[ i ], parameters ) for i, v in enumerate( volumes ) ]
         self.__patch_offsets = offsets_per_volume
         self.__patch_grid_shape = Batch.patch_grid_shape( bounds[ 0 ], parameters )
 
+        log.item( "extracting image patches" )
         image_data = [ volume.images for volume in volumes ]
         self.__image_patches = Batch.patches( image_data, offsets_per_volume, parameters )
 
+        log.item( "extracting label patches" )
         label_data = [ volume.labels for volume in volumes ]
         self.__label_patches = Batch.patches( label_data, offsets_per_volume, parameters )
 
+        log.item( "extracting mask patches" )
         mask_data = [ volume.masks for volume in volumes ]
         self.__mask_patches = Batch.patches( mask_data, offsets_per_volume, parameters )
 

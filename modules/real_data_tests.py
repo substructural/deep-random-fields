@@ -20,6 +20,7 @@ import layers
 import network
 import oasis
 import optimisation
+import output
 
 
 #---------------------------------------------------------------------------------------------------
@@ -30,6 +31,12 @@ class RealDataTests( unittest.TestCase ):
     @staticmethod
     def train_simple_cnn_on_oasis( input_path, output_path ):
 
+        log = output.Log( sys.stdout )
+        log.section( "initialising inputs" )
+
+        log.subsection( "model construction" )
+
+        log.entry( "building architecture" )
         leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
         architecture = network.Architecture(
             [ layers.ConvolutionalLayer( 1, 8, ( 3, 3, 3 ), 1, leaky_relu ),
@@ -43,14 +50,17 @@ class RealDataTests( unittest.TestCase ):
             input_dimensions = 4,
             output_dimensions = 2 )
 
+        log.entry( "building optimiser pipeline" )
         distribution_axis = 1
         cost_function = optimisation.CategoricalCrossEntropyCost( distribution_axis, 0.1, 0.1 )
         optimiser = optimisation.SimpleGradientDescentOptimiser( 0.1 )
+
+        log.entry( "building model" )
         model = network.Model( architecture, cost_function, optimiser )
 
         label_conversion = labels.SparseLabelConversions( 4 )
-        batch_parameters = data.Parameters( 4, ( 22, 22, 22 ), 1 )
-        oasis_dataset = oasis.OasisDataSet( input_path, 8, 1, 1, 42 )
+        batch_parameters = data.Parameters( 1, ( 22, 22, 22 ), 1 )
+        oasis_dataset = oasis.OasisDataSet( input_path, 8, 1, 1, 42, maybe_log = log )
 
         experiment_parameters = experiment.Parameters( "real-data-test", output_path, 2, 0.0001, 4 )
         test_run = experiment.Experiment(
@@ -58,7 +68,8 @@ class RealDataTests( unittest.TestCase ):
             label_conversion,
             oasis_dataset,
             batch_parameters,
-            experiment_parameters )
+            experiment_parameters,
+            log = log)
 
         return test_run.run() 
     
