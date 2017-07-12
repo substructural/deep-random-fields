@@ -173,14 +173,14 @@ class PatchSetTests( unittest.TestCase ):
         patch_shape = ( 1, 2, 2 )
 
         expected_patches = numpy.array( [
-            [ [ [ [ 1210, 1211 ],
-                  [ 1220, 1221 ] ] ],
-              [ [ [ 1331, 1332 ],
-                  [ 1341, 1342 ] ] ] ],
-            [ [ [ [ 2012, 2013 ],
-                  [ 2022, 2023 ] ] ],
-              [ [ [ 2123, 2124 ],
-                  [ 2133, 2134 ] ] ] ] ] )
+            [ [ [ 1210, 1211 ],
+                [ 1220, 1221 ] ] ],
+            [ [ [ 1331, 1332 ],
+                [ 1341, 1342 ] ] ],
+            [ [ [ 2012, 2013 ],
+                [ 2022, 2023 ] ] ],
+            [ [ [ 2123, 2124 ],
+                [ 2133, 2134 ] ] ] ] )
 
         computed_patches = sample.PatchSet.extract( volume_data, offsets_per_volume, patch_shape )
 
@@ -276,7 +276,7 @@ class RandomPatchSetTests( unittest.TestCase ):
             [ [ [ [ 1111, 1112 ] , # patch 1
                   [ 1121, 1122 ] ] ],
               [ [ [ 1113, 1114 ] , # patch 2
-                  [ 1123, 1124 ] ] ] , 
+                  [ 1123, 1124 ] ] ] ,
               [ [ [ 1115, 1116 ] , # patch 3
                   [ 1125, 1126 ] ] ] ],
 
@@ -296,32 +296,32 @@ class RandomPatchSetTests( unittest.TestCase ):
               [ [ [ 3315, 3316 ] , # patch 3
                   [ 3325, 3326 ] ] ] ]
         ] )
-            
+
         non_random_generator = MockRandomGenerator( 1, 2 )
         patches_after_permutation = numpy.array([
             non_random_generator.permutation( patches_before_permutation[i] )
             for i in range( 3 ) ])
 
         batch0 = sample.RandomPatchSet( aquisitions, 0, parameters, non_random_generator )
-        expected0 = patches_after_permutation[ 0:2, 0:2 ] 
+        expected0 = patches_after_permutation[ 0:2, 0:2 ].reshape(( 4, 1, 2, 2 ))
         self.assertEqual( batch0.image_patches.shape, expected0.shape )
         self.assertTrue( arrays_are_equal( batch0.image_patches, expected0 ) )
         self.assertTrue( arrays_are_equal( batch0.label_patches, expected0 ) )
 
         batch1 = sample.RandomPatchSet( aquisitions, 1, parameters, non_random_generator )
-        expected1 = patches_after_permutation[ 2:3, 0:2 ] 
+        expected1 = patches_after_permutation[ 2:3, 0:2 ].reshape(( 2, 1, 2, 2 ))
         self.assertEqual( batch1.image_patches.shape, expected1.shape )
         self.assertTrue( arrays_are_equal( batch1.image_patches, expected1 ) )
         self.assertTrue( arrays_are_equal( batch1.label_patches, expected1 ) )
 
         batch2 = sample.RandomPatchSet( aquisitions, 2, parameters, non_random_generator )
-        expected2 = patches_after_permutation[ 0:2, 2:3 ] 
+        expected2 = patches_after_permutation[ 0:2, 2:3 ].reshape(( 2, 1, 2, 2 ))
         self.assertEqual( batch2.image_patches.shape, expected2.shape )
         self.assertTrue( arrays_are_equal( batch2.image_patches, expected2 ) )
         self.assertTrue( arrays_are_equal( batch2.label_patches, expected2 ) )
 
         batch3 = sample.RandomPatchSet( aquisitions, 3, parameters, non_random_generator )
-        expected3 = patches_after_permutation[ 2:3, 2:3 ] 
+        expected3 = patches_after_permutation[ 2:3, 2:3 ].reshape(( 1, 1, 2, 2 ))
         self.assertEqual( batch3.image_patches.shape, expected3.shape )
         self.assertTrue( arrays_are_equal( batch3.image_patches, expected3 ) )
         self.assertTrue( arrays_are_equal( batch3.label_patches, expected3 ) )
@@ -330,6 +330,100 @@ class RandomPatchSetTests( unittest.TestCase ):
 #---------------------------------------------------------------------------------------------------
 
 class ContiguousPatchSetTests( unittest.TestCase ):
+
+
+    def test_volume_and_patch_index_for_batch( self ):
+
+        parameters = ( sample.Parameters()
+                       .with_target_shape(( 12, 13, 14 ))
+                       .with_patch_shape(( 2, 3, 4 ))
+                       .with_patch_stride( 3 )
+                       .with_patch_count( 5 ) )
+
+        test_cases = [
+            (  0, 0,  0 ),
+            (  1, 0,  5 ),
+            ( 12, 0, 60 ),
+            ( 13, 1,  1 ),
+            ( 25, 1, 61 ),
+            ( 26, 2,  2 ) ]
+
+        for test_case in test_cases:
+
+            batch, expected_volume, expected_patch = test_case
+            computed_volume, computed_patch = (
+                sample.ContiguousPatchSet.volume_and_patch_index_for_batch(
+                    batch,
+                    parameters ) )
+
+            self.assertEqual( computed_volume, expected_volume )
+            self.assertEqual( computed_patch, expected_patch )
+
+
+    def test_target_bounds_correction( self ):
+
+        class Case( object ):
+
+            def __init__( self, label, inner_bounds, target_shape, expected_bounds ):
+                self.label = label
+                self.target_shape = numpy.array( target_shape )
+                self.inner_bounds = numpy.array( inner_bounds )
+                self.expected_bounds = numpy.array( expected_bounds )
+
+        outer_bounds = geometry.cuboid( (1, 1, 1), (8, 8, 8) )
+        test_cases = [
+
+            Case( label = "no correction required (odd bounds)",
+                  target_shape    = ( 5, 5, 5 ),
+                  inner_bounds    = ( ( 5, 5, 5 ), ( 7, 7, 7 ) ),
+                  expected_bounds = ( ( 4, 4, 4 ), ( 8, 8, 8 ) ) ),
+
+            Case( label = "correction required at upper bound (odd bounds)",
+                  target_shape    = ( 7, 7, 7 ),
+                  inner_bounds    = ( ( 5, 5, 5 ), ( 7, 7, 7 ) ),
+                  expected_bounds = ( ( 2, 2, 2 ), ( 8, 8, 8 ) ) ),
+
+            Case( label = "correction required at lower bound (odd bounds)",
+                  target_shape    = ( 7, 7, 7 ),
+                  inner_bounds    = ( ( 2, 2, 2 ), ( 4, 4, 4 ) ),
+                  expected_bounds = ( ( 1, 1, 1 ), ( 7, 7, 7 ) ) ),
+
+            Case( label = "no correction required (even bounds)",
+                  target_shape    = ( 4, 4, 4 ),
+                  inner_bounds    = ( ( 5, 5, 5 ), ( 7, 7, 7 ) ),
+                  expected_bounds = ( ( 4, 4, 4 ), ( 7, 7, 7 ) ) ),
+
+            Case( label = "correction required at upper bound (even bounds)",
+                  target_shape    = ( 6, 6, 6 ),
+                  inner_bounds    = ( ( 5, 5, 5 ), ( 7, 7, 7 ) ),
+                  expected_bounds = ( ( 3, 3, 3 ), ( 8, 8, 8 ) ) ),
+
+            Case( label = "correction required at lower bound (even bounds)",
+                  target_shape    = ( 6, 6, 6 ),
+                  inner_bounds    = ( ( 2, 2, 2 ), ( 4, 4, 4 ) ),
+                  expected_bounds = ( ( 1, 1, 1 ), ( 6, 6, 6 ) ) )
+        ]
+
+        for test_case in test_cases:
+
+            computed_bounds = sample.ContiguousPatchSet.target_bounds(
+                outer_bounds, test_case.inner_bounds, test_case.target_shape )
+
+            self.assertTrue( numpy.array_equal( computed_bounds, test_case.expected_bounds ) )
+
+
+    def test_target_bounds_throws_an_exception_if_correction_is_impossible( self ):
+
+        outer_bounds = numpy.array(( ( 1, 1, 1 ), ( 5, 5, 5 ) ))
+        lower_centre = numpy.array(( ( 1, 1, 1 ), ( 3, 3, 3 ) ))
+        upper_centre = numpy.array(( ( 3, 3, 3 ), ( 5, 5, 5 ) ))
+        target_shape = numpy.array(( 6, 6, 6 ))
+
+        with self.assertRaises( Exception ):
+            sample.ContiguousPatchSet.target_bounds( outer_bounds, lower_centre, target_shape )
+
+        with self.assertRaises( Exception ):
+            sample.ContiguousPatchSet.target_bounds( outer_bounds, upper_centre, target_shape )
 
 
     @staticmethod
@@ -361,69 +455,55 @@ class ContiguousPatchSetTests( unittest.TestCase ):
         return aquisitions
 
 
-    def test_target_bounds( self ):
-
-        prime_bounds = sample.Parameters().with_target_bounds( 2, 3, 5 )
-
-
-        
-        even_bounds = sample.Parameters().with_target_bounds( 2, 4, 8 )
-    
-
-    def test_that_volume_and_patch_index_are_correct_for_initial_patch( self ):
-        
-        aquisitions = ContiguousPatchSetTests.construct_aquisitions_with_pixels_values_set_to_indices()
+    def test_that_patches_generated_for_batch_are_positioned_at_specified_offsets( self ):
 
         parameters = ( sample.Parameters()
-                       .with_volume_count( 2 )
-                       .with_patch_count( 4 )
-                       .with_patch_stride( 2 )
-                       .with_patch_shape( ( 1, 2, 2 ) )
-                       .with_seed( 42 ) )
+                       .with_target_shape(( 1, 3, 5 )) 
+                       .with_patch_shape(( 1, 2, 2 ))
+                       .with_patch_stride( 3 )
+                       .with_patch_count( 4 ) )
 
-        patch_set = sample.ContiguousPatchSet( 
-        expected_patches = numpy.array( [
+        aquisitions = ContiguousPatchSetTests.construct_aquisitions_with_pixels_values_set_to_indices()
 
-            # volume 1
-            [ [ [ [ 1111, 1112 ] , # patch 1
-                  [ 1121, 1122 ] ] ],
-              [ [ [ 1113, 1114 ] , # patch 2
-                  [ 1123, 1124 ] ] ] , 
-              [ [ [ 1115, 1116 ] , # patch 3
-                  [ 1125, 1126 ] ] ] ],
+        all_patches = numpy.array([
 
-            # volume 2
-            [ [ [ [ 2211, 2212 ] , # patch 1
-                  [ 2221, 2222 ] ] ],
-              [ [ [ 2213, 2214 ] , # patch 2
-                  [ 2223, 2224 ] ] ],
-              [ [ [ 2215, 2216 ] , # patch 3
-                  [ 2225, 2226 ] ] ] ],
+            [ # volume 0, centre = 1124, dy = (3-1)/2 = 1, dx = (5-1)/2 = 2, bounds = 1112 : 1136
+                [ [ [ 1112, 1113 ], # patch 0
+                    [ 1122, 1123 ] ] ],
+                [ [ [ 1115, 1116 ], # patch 1 (stride = 3, y only as +3 in x is out of bounds)
+                    [ 1125, 1126 ] ] ],
+            ],
 
-            # volume 3
-            [ [ [ [ 3311, 3312 ] , # patch 1
-                  [ 3321, 3322 ] ] ],
-              [ [ [ 3313, 3314 ] , # patch 2
-                  [ 3323, 3324 ] ] ],
-              [ [ [ 3315, 3316 ] , # patch 3
-                  [ 3325, 3326 ] ] ] ]
-        ] )
-            
+            [ # volume 0, centre = 2224, dy = (3-1)/2 = 1, dx = (5-1)/2 = 2, bounds = 2212 : 2236
+                [ [ [ 2212, 2213 ], # patch 0
+                    [ 2222, 2223 ] ] ],
+                [ [ [ 2215, 2216 ], # patch 1
+                    [ 2225, 2226 ] ] ],
+            ],
 
-        self.assertTrue( False )
+            [ # volume 0, centre = 3324, dy = (3-1)/2 = 1, dx = (5-1)/2 = 2, bounds = 3312 : 3336
+                [ [ [ 3312, 3313 ], # patch 0
+                    [ 3322, 3323 ] ] ],
+                [ [ [ 3315, 3316 ], # patch 1
+                    [ 3325, 3326 ] ] ],
+            ],
+        ])
 
+        patch_set_0 = sample.ContiguousPatchSet( aquisitions, 0, parameters )
+        computed_image_patches_0 = patch_set_0.image_patches
+        expected_image_patches_0 = all_patches.reshape(( 6, 1, 2, 2 ))[ 0 : 4 ]
+        difference_0 = computed_image_patches_0 - expected_image_patches_0
+        failed = numpy.abs( difference_0 ) > 0
+        self.assertTrue( not numpy.any( failed ) )
 
-    def test_that_volume_and_patch_index_are_correct_for_initial_patch( self ):
+        patch_set_1 = sample.ContiguousPatchSet( aquisitions, 1, parameters )
+        computed_image_patches_1 = patch_set_1.image_patches
+        expected_image_patches_1 = all_patches.reshape(( 6, 1, 2, 2 ))[ 4 : 6 ]
+        difference_1 = computed_image_patches_1 - expected_image_patches_1
+        failed = numpy.abs( difference_1 ) > 0
+        self.assertTrue( not numpy.any( failed ) )
 
-        self.assertTrue( False )
-
-
-    def test_that_volume_and_patch_index_are_correct_for_initial_patch( self ):
-
-        self.assertTrue( False )
-
-
-    
+        
 
 
 #---------------------------------------------------------------------------------------------------

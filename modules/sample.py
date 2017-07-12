@@ -27,7 +27,7 @@ class Parameters( object ) :
             patch_count = 1,
             patch_shape = ( 1, 1, 1 ),
             patch_stride = 1,
-            target_bounds = ( 1, 1, 1 ),
+            target_shape = ( 1, 1, 1 ),
             window_margin = 0,
             seed = 42,
             constrain_to_mask = True ):
@@ -37,7 +37,7 @@ class Parameters( object ) :
         self.patch_shape = patch_shape
         self.patch_stride = patch_stride
         self.constrain_to_mask = constrain_to_mask
-        self.targe_bounds = target_bounds
+        self.target_shape = target_shape
         self.window_margin = 0
         self.seed = seed
 
@@ -46,6 +46,7 @@ class Parameters( object ) :
 
         return ( "parameters {\n" +
                  "volume_count      : " + str( self.volume_count ) + "\n" +
+                 "target_shape      : " + str( self.target_shape ) + "\n" +
                  "patch_shape       : " + str( self.patch_shape ) + "\n" +
                  "patch_stride      : " + str( self.patch_stride ) + "\n" +
                  "constrain_to_mask : " + str( self.constrain_to_mask ) + "\n" +
@@ -56,6 +57,13 @@ class Parameters( object ) :
 
         other = copy.copy( self )
         other.volume_count = volume_count
+        return other
+
+
+    def with_target_shape( self, target_shape ) :
+
+        other = copy.copy( self )
+        other.target_shape = target_shape
         return other
 
 
@@ -156,13 +164,13 @@ class PatchSet( object ):
 
         assert len( patch_shape ) == 3
 
-        patches = numpy.array(
-            [ [ volume_data[ volume_index ][
+        patches = numpy.array([
+            volume_data[ volume_index ][
                 offsets[ 0 ] : offsets[ 0 ] + patch_shape[ 0 ],
                 offsets[ 1 ] : offsets[ 1 ] + patch_shape[ 1 ],
                 offsets[ 2 ] : offsets[ 2 ] + patch_shape[ 2 ] ]
-                for offsets in offsets_for_volume ]
-              for volume_index, offsets_for_volume in enumerate( offsets_per_volume ) ] )
+            for volume_index, offsets_for_volume in enumerate( offsets_per_volume )
+            for offsets in offsets_for_volume  ] )
 
         return patches
 
@@ -183,7 +191,7 @@ class PatchSet( object ):
         log.item( "extracting mask patches" )
         mask_data = [ volume.masks for volume in volumes ]
         self.__mask_patches = PatchSet.extract( mask_data, offsets_per_volume, patch_shape )
-    
+
 
     @property
     def patch_offsets( self ) :
@@ -215,20 +223,20 @@ class PatchSet( object ):
 class RandomPatchSet( PatchSet ):
     '''
     A patch set constructed by randomly sampling the possible patches in a subset of volumes.
-    
+
     The sampling algorithm proceeds as follows:
 
       * consider the full set of patches across all volumes laid out in a grid, with 
         rows corresponding to volumes, and columns to patches within a volume
-    
+
       * now randomise the order of patches in each row, using a different seed for each
         (for this we simply use the global seed plus the index of the row)
-    
+
       * we now partition both the rows and the columns of the grid as follows:
 
           - group consecutive rows into subsets according to the parameter volume count
             these are the volumes which will be processed together in each batch
-    
+
           - group consecutive columns according to the parameter patch_count divided by
             the volume_count
 
@@ -236,7 +244,7 @@ class RandomPatchSet( PatchSet ):
         approximately patch_count patches drawn from volume_count volumes. 
 
       * the exact number may be less than patch_count if:
-        
+
           - the number of volumes is not divisible by volume_count, in which case
             patch sets drawn from final subset of rows will have fewer elements
 
@@ -246,7 +254,7 @@ class RandomPatchSet( PatchSet ):
 
         Patch sets drawn from subsets which are neither in the last rows or columns will
         always have exactly patch_count elements
-    
+
       * the order of iteration is by column, and then by row within that column, i.e. we
         iterate through each patch set in the first column, and then in the second, etc.
         This ensures that the set of volumes is sampled as evenly as possible.  In the code
@@ -284,7 +292,7 @@ class RandomPatchSet( PatchSet ):
 
         random_offsets = random_generator.permutation( offsets )
         return random_offsets[ start : end ]
-    
+
 
     def __init__( self, aquisitions, batch, parameters, random_generator, log = output.Log() ):
 
@@ -337,85 +345,113 @@ class ContiguousPatchSet( PatchSet ):
     @staticmethod
     def volume_and_patch_index_for_batch( batch, parameters ):
 
-        target_bounds = numpy.array( parameters.target_bounds )
-        patch_grid_shape = numpy.ceil( target_bounds / parameters.patch_stride )
-        patches_per_volume = numpy.prod( patch_grid_shape )
-        patches_per_batch = parameters.patch_count
+        patch_shape = numpy.array( parameters.patch_shape )
+        target_shape = numpy.array( parameters.target_shape )
+        stride_space = target_shape - patch_shape
+        stride_space_is_negative = numpy.prod( stride_space ) < 0
 
-        preceding_patch_count = patches_per_batch * batch
-        volume = math.floor( preceding_patch_count / patches_per_volume )
-        patch_index_in_volume = preceding_patch_count % patches_per_volume
-        return ( volume, patch_index_in_volume )
+        if stride_space_is_negative:
+
+            raise Exception( 'patch shape exceeds free space in volume' )
+
+        else:
+
+            patch_grid_shape = numpy.floor( stride_space / parameters.patch_stride ) + 1
+            patches_per_volume = numpy.prod( patch_grid_shape ).astype( 'int64' )
+            patches_per_batch = parameters.patch_count
+
+            preceding_patch_count = patches_per_batch * batch
+            volume = math.floor( preceding_patch_count / patches_per_volume )
+            patch_index_in_volume = preceding_patch_count % patches_per_volume
+
+            return ( volume, patch_index_in_volume )
 
 
     @staticmethod
-    def target_bounds( volume, parameters ):
+    def target_bounds( outer_bounds, inner_bounds, target_shape ):
 
-        bounds = volume.unmasked_bounds if parameters.constrain_to_mask else volume.bounds 
-        centre = numpy.floor( bounds / 2 )
-        lower_span = numpy.floor( parameters.target_bounds / 2 )
-        upper_span = parameters.target_bounds - ( lower_span + 1 )
-        target = numpy.array(( centre - lower_span, centre + upper_span ))
+        inner_shape = inner_bounds[1] - inner_bounds[0] + 1
+        inner_span = numpy.floor( inner_shape / 2 ).astype( 'int64' )
+        centre = inner_bounds[0] + inner_span
+
+        lower_span = numpy.floor( target_shape / 2 ).astype( 'int64' )
+        upper_span = target_shape - ( lower_span + 1 )
+        target_bounds = numpy.array(( centre - lower_span, centre + upper_span ))
 
         def correction( axis ):
-            
-            offset_to_minimum = target[0][axis] - bounds[0][axis]
-            offset_to_maximum = bounds[1][axis] - target[1][axis]
+
+            offset_to_minimum = target_bounds[0][axis] - outer_bounds[0][axis]
+            offset_to_maximum = outer_bounds[1][axis] - target_bounds[1][axis]
 
             if offset_to_maximum + offset_to_minimum < 0:
-                raise Exception( "cannot fit target", target, "to bounds", bounds )
+                raise Exception( "cannot fit target", target_shape, "to bounds", outer_bounds )
 
             elif offset_to_minimum < 0:
-                corrected_minimum = bounds[0][axis]
-                corrected_maximum = target[1][axis] - offset_to_minimum
+                shift_up = abs( offset_to_minimum )
+                corrected_minimum = outer_bounds[0][axis]
+                corrected_maximum = target_bounds[1][axis] + shift_up
                 return ( corrected_minimum, corrected_maximum )
 
             elif offset_to_maximum < 0:
-                corrected_minimum = target[0][axis] - offset_to_maximum
-                corrected_maximum = bounds[1][axis]
+                shift_down = abs( offset_to_maximum )
+                corrected_minimum = target_bounds[0][axis] - shift_down
+                corrected_maximum = outer_bounds[1][axis]
                 return ( corrected_minimum, corrected_maximum )
 
             else:
-                return ( target[0][axis], target[1][axis] )
+                return target_bounds[ :, axis]
 
         corrected = numpy.array([ correction( axis ) for axis in range( 0, 3 ) ]).T
         return corrected
-    
+
 
     @staticmethod
     def subset_of_offsets( offsets, volume, start, end ):
 
         start_volume, start_patch_for_batch = start
         start_patch = start_patch_for_batch if volume == start_volume else 0
-        
+
         end_volume, end_patch_for_batch = end
         end_patch = end_patch_for_batch if volume == end_volume else len( offsets )
 
         return offsets[ start_patch : end_patch ]
-        
+
 
     def __init__( self, aquisitions, batch, parameters, log = output.Log() ):
 
         start = ContiguousPatchSet.volume_and_patch_index_for_batch( batch, parameters )
+        start_volume = start[ 0 ]
+        start_in_batch = ( 0, start[1] )
+
         end = ContiguousPatchSet.volume_and_patch_index_for_batch( batch + 1, parameters )
+        end_patch = end[ 1 ]
+        end_volume = end[ 0 ] if end_patch == 0 else end[ 0 ] + 1
+        end_in_batch = ( end_volume - start_volume, end[1] )
 
         volumes = [
-            aquisition.read_volume() for aquisition in aquisitions[ start[0] : end[0] ] ]
+            aquisition.read_volume() for aquisition in aquisitions[ start_volume : end_volume ] ]
 
         offsets_per_volume = [
-            ContiguousPatchSet.subset_of_offsets( 
-                PatchSet.offsets(
-                    ContiguousPatchSet.target_bounds( volumes[ i ], parameters ),
-                    parameters.patch_shape,
-                    parameters.patch_stride ),
+            PatchSet.offsets(
+                ContiguousPatchSet.target_bounds(
+                    volume.bounds,
+                    volume.unmasked_bounds,
+                    numpy.array( parameters.target_shape ) ),
+                parameters.patch_shape,
+                parameters.patch_stride )
+            for volume in volumes ]
+
+        offsets_per_volume_in_this_batch = [
+            ContiguousPatchSet.subset_of_offsets(
+                offsets_per_volume[ i ],
                 i,
-                start,
-                end )
-            for i in range( start, end ) ]
+                start_in_batch,
+                end_in_batch )
+            for i in range( len( volumes ) ) ]
 
         super( ContiguousPatchSet, self ).__init__(
             volumes,
-            offsets_per_volume,
+            offsets_per_volume_in_this_batch,
             parameters.patch_shape,
             log )
 

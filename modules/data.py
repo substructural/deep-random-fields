@@ -143,6 +143,12 @@ class Volume( object ):
 
 
     @property
+    def bounds( self ):
+
+        return cuboid( ( 0, 0, 0 ), self.dimensions )
+
+
+    @property
     def unmasked_bounds( self ) :
 
         mask_reduced_in_x = N.any( self.masks, ( 0, 1 ) )
