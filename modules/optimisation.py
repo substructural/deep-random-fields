@@ -2,89 +2,363 @@
 # network optimisation module
 
 
+#---------------------------------------------------------------------------------------------------
+
+
+import theano
 import theano.tensor as T
+import numpy
+
+import learning_rates
+import output
 
 
 #---------------------------------------------------------------------------------------------------
 
-class CostFunction( object ) :
 
+class Parameters( object ):
+    '''
+    The meta parameters for the optimisation algorithm.
 
-    def __init__( self, weight_L1, weight_L2 ) :
+    '''
 
+    def __init__(
+            self,
+            learning_rate = 0.1,
+            weight_L1 = 0.0,
+            weight_L2 = 0.0,
+            weight_decay = 0.0,
+            cost_sample_size = 3,
+            recent_cost_sample_size = 2,
+            convergence_threshold = 1e-5,
+            maximum_epochs = 16 ):
+
+        self.__learning_rate = learning_rate
         self.__weight_L1 = weight_L1
         self.__weight_L2 = weight_L2
+        self.__weight_decay = weight_decay
+        self.__cost_sample_size = cost_sample_size 
+        self.__recent_cost_sample_size = recent_cost_sample_size
+        self.__convergence_threshold = convergence_threshold
+        self.__maximum_epochs = maximum_epochs
+
+
+    @property
+    def learning_rate( self ):
+        '''
+        The coefficient of the error gradient applied during parameter update.
+
+        '''
+
+        return self.__learning_rate
 
 
     @property
     def weight_L1( self ) :
+        '''
+        The coefficient of the L1 norm of the weights, applied during parameter update.
+
+        '''
 
         return self.__weight_L1
 
 
     @property
     def weight_L2( self ) :
+        '''
+        The coefficient of the L2 norm of the weights, applied during parameter update.
+
+        '''
 
         return self.__weight_L2
 
 
-    def regularise_L1( self, parameters ) :
+    @property
+    def weight_decay( self ):
+        '''
+        A coefficient for a constant weight reduction term which pulls weights to zero over time.
 
-        L1 = T.sum( [ T.sum( abs( p ) ) for subset in parameters for p in subset ] )
-        return self.weight_L1 * L1
+        '''
+
+        return self.__weight_decay
 
 
-    def regularise_L2_square( self, parameters ) :
+    @property
+    def recent_cost_sample_size( self ):
+        '''
+        The number of epochs from which to compute a mean cost representative of the current model.
 
-        L2 = T.sum( [ T.sum( p ** 2 ) for subset in parameters for p in subset ] )
-        return self.weight_L2 * L2
+        '''
+
+        return self.__recent_cost_sample_size
+
+
+    @property
+    def cost_sample_size( self ):
+        '''
+        The number of epochs from which to compute a mean cost to compare the current model against.
+
+        '''
+
+        return self.__cost_sample_size
+
+
+    @property
+    def convergence_threshold( self ):
+        '''
+        The maximum difference between minimum and maximum costs which constitutes convergence.
+
+        '''
+
+        return self.__convergence_threshold
+
+
+    @property
+    def maximum_epochs( self ):
+        '''
+        The maximum difference between minimum and maximum costs which constitutes convergence.
+
+        '''
+
+        return self.__maximum_epochs
 
 
 #---------------------------------------------------------------------------------------------------
 
-class CategoricalCrossEntropyCost( CostFunction ) :
+
+class Monitor( object ):
 
 
-    def __init__( self, distribution_axis, weight_L1, weight_L2 ) :
+    def on_batch( self, epoch, batch, cost, labels ):
+        ''' 
+        Event handler called on completion of a batch during validation. 
 
-        super( CategoricalCrossEntropyCost, self ).__init__( weight_L1, weight_L2 )
-        self.__distribution_axis = distribution_axis
+        '''
+        pass
 
 
-    @property
-    def distribution_axis( self ):
+    def on_epoch( self, epoch, mean_cost ):
+        ''' 
+        Event handler called on completion of an epoch during validation. 
 
-        return self.__distribution_axis
-    
+        '''
+        pass
 
-    def __call__( self, outputs, labels, parameters ) :
-
-        cross_entropy = (-1) * T.sum( labels * T.log( outputs ), axis=self.distribution_axis )
-        mean_cross_entropy = T.mean( cross_entropy )
-        penalty_l1 = self.regularise_L1( parameters )
-        penalty_l2 = self.regularise_L2_square( parameters )
-        return mean_cross_entropy + penalty_l1 + penalty_l2
+        
 
 
 #---------------------------------------------------------------------------------------------------
 
-class SimpleGradientDescentOptimiser( object ) :
+
+class Cost:
 
 
-    def __init__( self, learning_rate ) :
+    @staticmethod
+    def has_converged( costs, parameters ) :
 
-        self.__learning_rate = learning_rate
+        k = parameters.recent_cost_sample_size
+
+        if len( costs ) > 1 :
+            minimum = min( costs[ -k : ] )
+            maximum = max( costs[ -k : ] )
+            change_over_last_k = abs( maximum - minimum )
+            has_converged = change_over_last_k < parameters.convergence_threshold
+
+            return has_converged
+        else :
+            return False
 
 
-    def __call__( self, parameter, cost ) :
+    @staticmethod
+    def has_overfit( costs, parameters ) :
 
-        return parameter - self.learning_rate * T.grad( cost, wrt=parameter )
+        n = parameters.cost_sample_size
+        k = parameters.recent_cost_sample_size
+
+        assert ( 0 < k ) and ( k < n )
+        if len( costs ) >= n :
+            mean_cost_of_last_n = float( sum( costs[ -n : ] ) ) / n
+            mean_cost_of_last_k = float( sum( costs[ -k : ] ) ) / k
+            has_overfit = mean_cost_of_last_k > mean_cost_of_last_n
+
+            return has_overfit
+        else :
+            return False
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class Optimiser( object ) :
+
+
+    def __init__(
+            self,
+            cost_function,
+            parameters,
+            learning_rate = None,
+            log = output.Log() ) :
+
+        default_learning_rate = learning_rates.ConstantLearningRate( parameters.learning_rate )
+        self.__learning_rate = learning_rate if learning_rate else default_learning_rate
+        self.__cost_function = cost_function
+        self.__optimisation_parameters = parameters
+        self.__log = log
 
 
     @property
-    def learning_rate( self ) :
+    def log( self ):
+
+        return self.__log
+
+
+    @property
+    def parameters( self ):
+
+        return self.__optimisation_parameters
+
+
+    @property
+    def cost_function( self ):
+
+        return self.__cost_function
+
+
+    @property
+    def learning_rate_schedule( self ):
 
         return self.__learning_rate
+
+
+    def updates( self, model, parameter, cost ):
+
+        raise NotImplementedError
+    
+
+    def optimisation_step( self, model ):
+
+        cost = self.cost_function( model.outputs, model.labels, model.parameters )
+        inputs = [ model.inputs, model.labels ]
+        outputs = [ model.outputs, cost ]
+        updates = self.updates( model, cost )
+
+        self.log.entry( "compiling optimisation step" )
+        return theano.function( inputs, outputs, updates = updates, allow_input_downcast = True )
+
+
+    def validation_step( self, model ):
+
+        cost = self.cost_function( model.outputs, model.labels, model.parameters )
+        inputs = [ model.inputs, model.labels ]
+        outputs = [ model.outputs, cost ]
+
+        self.log.entry( "compiling validation step" )
+        return theano.function( inputs, outputs, allow_input_downcast = True )
+
+
+    def iterate(self, step, step_name, epoch, data, monitor, model ):
+
+        self.log.subsection( step_name + " for epoch" + str(epoch) )
+        costs = []
+
+        for batch, ( images, labels ) in enumerate( data ):
+
+            state = []
+            for names_and_values in model.parameter_names_and_values:
+                state.append( dict( names_and_values ) )
+
+            predicted_labels, cost = step( images, labels )
+
+            costs.append( cost )
+            monitor.on_batch( epoch, batch, cost, predicted_labels )
+            self.log.entry( step_name + " batch " + str(batch) )
+
+            for layer in state:
+                layer[ 'cost' ] = cost
+                self.log.record( layer )
+
+        mean_cost = numpy.sum( costs ) / len( costs )
+        monitor.on_epoch( epoch, mean_cost )
+        self.log.entry( step_name + " cost for epoch: " + str(mean_cost) )
+
+        return mean_cost
+
+
+    def optimise_until_converged(
+            self,
+            model,
+            optimisation_data,
+            validation_data,
+            optimisation_monitor,
+            validation_monitor ):
+
+        self.log.section( "optimising model" )
+        costs = []
+
+        self.log.entry( "constructing validation graph" )
+        validation_step = self.validation_step( model )
+
+        self.log.entry( "constructing optimisation graph" )
+        optimisation_step = self.optimisation_step( model )
+
+        for epoch in range( self.parameters.maximum_epochs ):
+
+            self.iterate(
+                optimisation_step, "optimisation", epoch, optimisation_data, optimisation_monitor, model )
+
+            cost = self.iterate(
+                validation_step, "validation", epoch, validation_data, validation_monitor, model )
+
+            costs.append( cost )
+
+            if Cost.has_converged( costs, self.parameters ):
+                self.log.entry( "optimisation has converged" )
+                break
+
+            if Cost.has_overfit( costs, self.parameters ):
+                self.log.entry( "optimisation has overfit" )
+                break
+
+        self.log.entry( "optimisation complete" )
+        return model
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class StochasticGradientDescent( Optimiser ) :
+
+
+    def updates( self, model, cost ):
+
+        parameters = [ p for subset in model.parameters for p in subset ]
+        index = list( range( len( parameters ) ) )
+
+        gradient = lambda p, c: T.grad( c, wrt=p, disconnected_inputs='ignore' )
+        gradients = [ gradient( p, cost ) for p in parameters ]
+
+        learning_rate = self.learning_rate_schedule
+
+        if isinstance( learning_rate, learning_rates.GlobalLearningRate ):
+
+            learning_rate, learning_rate_updates = learning_rate( cost )
+            parameter_update = lambda i:  parameters[i] - learning_rate * gradients[i]
+            parameter_updates = [ ( parameters[i], parameter_update(i) ) for i in index ]
+
+            return parameter_updates + learning_rate_updates
+
+        if isinstance( learning_rate, learning_rates.LocalLearningRate ):
+
+            rates_and_updates = [ learning_rate( p, g ) for p, g in zip( parameters, gradients ) ]
+            rate_per_parameter = [ r for r, u in rates_and_updates ]
+            rate_updates = [ u for r, u in rates_and_updates ]
+
+            parameter_update = lambda i: parameters[i] - rate_per_parameter[i] * gradients[i]
+            parameter_updates = [ ( parameters[i], parameter_update(i) ) for i in index ]
+
+            return parameter_updates + rate_updates
+
+        raise Exception( 'unsupported learning rate type ' + str( type( learning_rate ) ) )
 
 
 #---------------------------------------------------------------------------------------------------
