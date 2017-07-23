@@ -1,6 +1,9 @@
 #===================================================================================================
 # sample tests
 
+
+
+from collections import namedtuple
 import unittest
 
 import numpy
@@ -8,7 +11,9 @@ import numpy
 import data
 import geometry
 import sample
+import output
 
+import debug
 import pdb
 
 
@@ -133,7 +138,7 @@ class PatchSetTests( unittest.TestCase ):
         patch_shape = ( 6, 4, 3 ) 
         bounds = numpy.array( [ [ 0, 1, 2 ], [ 10, 10, 10 ] ] )
 
-        computed = sample.PatchSet.offsets( bounds, patch_shape, patch_stride )
+        computed = sample.PatchSet.offsets_in_volume( bounds, patch_shape, patch_stride )
         expected = numpy.array( [
             [ 0, 1, 2 ],
             [ 0, 1, 5 ],
@@ -160,15 +165,16 @@ class PatchSetTests( unittest.TestCase ):
     def test_that_patches_are_positioned_at_specified_offsets_and_have_correct_size( self ):
 
         I = J = K = range( 0, 5 )
-        V = range( 1, 3 )
+        V = range( 0, 3 )
         volume_data = numpy.array( [
             [ [ [ v*1000 + k*100 + j*10 + i for i in I ] for j in J ] for k in K ] for v in V ] )
 
-        offsets_per_volume = numpy.array( [
-            [ [ 2, 1, 0 ],
-              [ 3, 3, 1 ] ],
-            [ [ 0, 1, 2 ],
-              [ 1, 2, 3 ] ] ] )
+        volume_offset = 1
+        patch_offsets = numpy.array( [
+            [ 1, 2, 1, 0 ],
+            [ 1, 3, 3, 1 ],
+            [ 2, 0, 1, 2 ],
+            [ 2, 1, 2, 3 ] ] )
 
         patch_shape = ( 1, 2, 2 )
 
@@ -182,7 +188,11 @@ class PatchSetTests( unittest.TestCase ):
             [ [ [ 2123, 2124 ],
                 [ 2133, 2134 ] ] ] ] )
 
-        computed_patches = sample.PatchSet.extract( volume_data, offsets_per_volume, patch_shape )
+        computed_patches = sample.PatchSet.extract(
+            volume_data[volume_offset:volume_offset+2],
+            volume_offset,
+            patch_offsets,
+            patch_shape )
 
         self.assertTrue( arrays_are_equal( expected_patches, computed_patches ) )
 
@@ -196,7 +206,7 @@ class MockRandomGenerator( object ):
         self.increment = increment
 
     def permutation( self, xs ):
-        # this is not guaranteed to be a perutation of course, but this is fune for a test
+        # this is not guaranteed to be a permutation of course, but this is fine for a test
         count = xs.shape[0]
         index = [ ( self.start + i * self.increment ) % count for i in range( count ) ]
         permuted = numpy.array( [ xs[ index[ i ] ] for i in range( count ) ] )
@@ -219,15 +229,15 @@ class RandomPatchSetTests( unittest.TestCase ):
 
         expected0 = [ [ i ] for i in [ 0, 1, 2 ] ]
         computed_volumes_0 = computed_batch( 0 )
-        self.assertEqual( computed_volumes_0, expected0 )
+        self.assertEqual( computed_volumes_0, ( expected0, 0 ) )
 
         expected3 = [ [ i ] for i in [ 9 ] ]
         computed_volumes_3 = computed_batch( 3 )
-        self.assertEqual( computed_volumes_3, expected3 )
+        self.assertEqual( computed_volumes_3, ( expected3, 9 ) )
 
         expected4 = [ [ i ] for i in [ 0, 1, 2 ] ]
         computed_volumes_4 = computed_batch( 4 )
-        self.assertEqual( computed_volumes_4, expected4 )
+        self.assertEqual( computed_volumes_4, ( expected4, 0 ) )
 
 
     @staticmethod
@@ -268,6 +278,7 @@ class RandomPatchSetTests( unittest.TestCase ):
                        .with_patch_count( 4 )
                        .with_patch_stride( 2 )
                        .with_patch_shape( ( 1, 2, 2 ) )
+                       .with_target_shape( ( 1, 3, 6 ) )
                        .with_seed( 42 ) )
 
         patches_before_permutation = numpy.array( [
@@ -329,7 +340,7 @@ class RandomPatchSetTests( unittest.TestCase ):
 
 #---------------------------------------------------------------------------------------------------
 
-class ContiguousPatchSetTests( unittest.TestCase ):
+class SequentialPatchSetTests( unittest.TestCase ):
 
 
     def test_volume_and_patch_index_for_batch( self ):
@@ -352,7 +363,7 @@ class ContiguousPatchSetTests( unittest.TestCase ):
 
             batch, expected_volume, expected_patch = test_case
             computed_volume, computed_patch = (
-                sample.ContiguousPatchSet.volume_and_patch_index_for_batch(
+                sample.SequentialPatchSet.volume_and_patch_index_for_batch(
                     batch,
                     parameters ) )
 
@@ -406,7 +417,7 @@ class ContiguousPatchSetTests( unittest.TestCase ):
 
         for test_case in test_cases:
 
-            computed_bounds = sample.ContiguousPatchSet.target_bounds(
+            computed_bounds = sample.SequentialPatchSet.target_bounds(
                 outer_bounds, test_case.inner_bounds, test_case.target_shape )
 
             self.assertTrue( numpy.array_equal( computed_bounds, test_case.expected_bounds ) )
@@ -420,10 +431,10 @@ class ContiguousPatchSetTests( unittest.TestCase ):
         target_shape = numpy.array(( 6, 6, 6 ))
 
         with self.assertRaises( Exception ):
-            sample.ContiguousPatchSet.target_bounds( outer_bounds, lower_centre, target_shape )
+            sample.SequentialPatchSet.target_bounds( outer_bounds, lower_centre, target_shape )
 
         with self.assertRaises( Exception ):
-            sample.ContiguousPatchSet.target_bounds( outer_bounds, upper_centre, target_shape )
+            sample.SequentialPatchSet.target_bounds( outer_bounds, upper_centre, target_shape )
 
 
     @staticmethod
@@ -463,7 +474,7 @@ class ContiguousPatchSetTests( unittest.TestCase ):
                        .with_patch_stride( 3 )
                        .with_patch_count( 4 ) )
 
-        aquisitions = ContiguousPatchSetTests.construct_aquisitions_with_pixels_values_set_to_indices()
+        aquisitions = SequentialPatchSetTests.construct_aquisitions_with_pixels_values_set_to_indices()
 
         all_patches = numpy.array([
 
@@ -489,14 +500,14 @@ class ContiguousPatchSetTests( unittest.TestCase ):
             ],
         ])
 
-        patch_set_0 = sample.ContiguousPatchSet( aquisitions, 0, parameters )
+        patch_set_0 = sample.SequentialPatchSet( aquisitions, 0, parameters )
         computed_image_patches_0 = patch_set_0.image_patches
         expected_image_patches_0 = all_patches.reshape(( 6, 1, 2, 2 ))[ 0 : 4 ]
         difference_0 = computed_image_patches_0 - expected_image_patches_0
         failed = numpy.abs( difference_0 ) > 0
         self.assertTrue( not numpy.any( failed ) )
 
-        patch_set_1 = sample.ContiguousPatchSet( aquisitions, 1, parameters )
+        patch_set_1 = sample.SequentialPatchSet( aquisitions, 1, parameters )
         computed_image_patches_1 = patch_set_1.image_patches
         expected_image_patches_1 = all_patches.reshape(( 6, 1, 2, 2 ))[ 4 : 6 ]
         difference_1 = computed_image_patches_1 - expected_image_patches_1
@@ -504,6 +515,125 @@ class ContiguousPatchSetTests( unittest.TestCase ):
         self.assertTrue( not numpy.any( failed ) )
 
         
+#---------------------------------------------------------------------------------------------------
+
+
+class AccessorUnderTest( sample.Accessor ):
+
+
+    PatchSet = namedtuple( "PatchSet", [ "image_patches", "label_patches", "patch_offsets" ] )
+
+    def __init__(
+            self,
+            aquisitions,
+            image_patches,
+            label_patches,
+            patch_offsets,
+            sample_parameters,
+            maybe_image_normalisation = None,
+            maybe_label_conversion = None ):
+
+        self.image_patches = image_patches
+        self.label_patches = label_patches
+        self.patch_offsets = patch_offsets
+
+        identity = lambda p : p
+        image_normalisation = maybe_image_normalisation if maybe_image_normalisation else identity
+        label_conversion = maybe_label_conversion if maybe_label_conversion else identity
+        super( AccessorUnderTest, self ).__init__(
+            aquisitions, sample_parameters, image_normalisation, label_conversion, output.Log() ) 
+    
+
+    def patch_set( self, batch ):
+
+        return AccessorUnderTest.PatchSet(
+            self.image_patches[ batch ],
+            self.label_patches[ batch ],
+            self.patch_offsets[ batch ] )
+        
+
+
+class AccessorTests( unittest.TestCase ):
+
+
+    def test_that_the_accessor_has_the_correct_length( self ):
+
+        n = 4
+        aquisitions = list( range( n ) )
+
+        d, h, w = ( 1, 2, 2 )
+        parameters = ( sample.Parameters()
+                       .with_target_shape(( d, 2*h, 2*w ))
+                       .with_patch_shape(( d, h, w ))
+                       .with_patch_count( 2 ) )
+
+        patch_offsets = numpy.array( list( range( 4 * 2 * 2 ) ) )
+        image_patches = numpy.array( list( range( 4 * 2 * 2 ) ) )
+        label_patches = image_patches + 1
+
+        accessor = AccessorUnderTest(
+            aquisitions,
+            image_patches,
+            label_patches,
+            patch_offsets,
+            parameters )
+
+        iterations = [ b for b in accessor ]
+        self.assertEqual( len( accessor ), 8 )
+        self.assertEqual( len( iterations ), 8 )
+
+
+
+    def test_that_the_accessor_applies_the_correct_image_normalisation_and_label_conversion( self ):
+
+        image_normalisation = lambda p: p - float( numpy.mean( p.reshape((-1,)) ) )
+        label_conversion = lambda p: p - 1
+
+        n = 4
+        aquisitions = list( range( n ) )
+
+        d, h, w = ( 1, 2, 2 )
+        parameters = ( sample.Parameters()
+                       .with_target_shape(( d, 2*h, 2*w ))
+                       .with_patch_shape(( d, h, w ))
+                       .with_patch_count( 2 ) )
+
+        images = numpy.array(
+            [ [ [ [ v*1000 + z*100 + y*10 + x
+                    for x in range(2*w) ] 
+                  for y in range(2*h) ]
+                for z in range(d) ]
+              for v in range(n) ] )
+
+        patch_offsets = numpy.array(
+            [ ( v, 0, y, x )
+              for v in range( n )
+              for y in [ 0, h ]
+              for x in [ 0, w ] ]).reshape(( 8, 2, 4 ))
+
+        image_patches = numpy.array(
+            [ [ images[ v, z, y:y+h, x:x+w ]
+                for v, z, y, x in batch ]
+              for batch in patch_offsets ])
+
+        label_patches = image_patches + 1
+
+        accessor = AccessorUnderTest(
+            aquisitions,
+            image_patches,
+            label_patches,
+            patch_offsets,
+            parameters,
+            image_normalisation,
+            label_conversion )
+
+        for i, ( image_patches_i, label_patches_i, patch_offsets_i ) in enumerate( accessor ):
+            expected_image_patches = accessor.image_normalisation( image_patches[ i ] )
+            expected_label_patches = accessor.label_conversion( label_patches[ i ] )
+            expected_patch_offsets = patch_offsets[ i ]
+            self.assertTrue( numpy.array_equal( image_patches_i, expected_image_patches ) )
+            self.assertTrue( numpy.array_equal( label_patches_i, expected_label_patches ) )
+            self.assertTrue( numpy.array_equal( patch_offsets_i, expected_patch_offsets ) )
 
 
 #---------------------------------------------------------------------------------------------------

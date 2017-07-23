@@ -37,7 +37,7 @@ or evaluation of a network:
   |                 |                   |                   |                   |
   +-----------------+-------------------+-------------------+-------------------+
 
-Note that three combinatinons, desnse patch masks, sparse patch indices and sparse patch
+Note that three combinatinons, dense patch masks, sparse patch indices and sparse patch
 masks, are not required for any stage in training or evaluation, and will thus be ignored
 here.  We present the sequence of transformations from one format to the next as required
 for training a network whose final classification layers are non-convolutional below:

@@ -261,7 +261,7 @@ class Optimiser( object ) :
         self.log.subsection( step_name + " for epoch" + str(epoch) )
         costs = []
 
-        for batch, ( images, labels ) in enumerate( data ):
+        for batch, ( images, labels, positions ) in enumerate( data ):
 
             state = []
             for names_and_values in model.parameter_names_and_values:
@@ -270,7 +270,7 @@ class Optimiser( object ) :
             predicted_labels, cost = step( images, labels )
 
             costs.append( cost )
-            monitor.on_batch( epoch, batch, cost, predicted_labels )
+            monitor.on_batch( epoch, batch, cost, predicted_labels, positions )
             self.log.entry( step_name + " batch " + str(batch) )
 
             for layer in state:

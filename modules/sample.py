@@ -122,6 +122,17 @@ class PatchSet( object ):
 
 
     @staticmethod
+    def batches_per_epoch( volume_count, target_shape, patch_shape, patches_per_batch ):
+
+        patches_per_volume = numpy.prod( numpy.array( target_shape ) // numpy.array( patch_shape ) )
+        total_patch_count = patches_per_volume * volume_count
+
+        batch_count = int( math.ceil( float( total_patch_count ) / patches_per_batch ) )
+        assert batch_count >= 0
+        return batch_count
+
+
+    @staticmethod
     def normalised_bounds_of_unmasked_regions( volumes ) :
 
         bounds = numpy.array( [ volume.unmasked_bounds for volume in volumes ] )
@@ -142,7 +153,45 @@ class PatchSet( object ):
 
 
     @staticmethod
-    def offsets( bounds, patch_shape, patch_stride ) :
+    def target_bounds( outer_bounds, inner_bounds, target_shape ):
+
+        inner_shape = inner_bounds[1] - inner_bounds[0] + 1
+        inner_span = numpy.floor( inner_shape / 2 ).astype( 'int64' )
+        centre = inner_bounds[0] + inner_span
+
+        lower_span = numpy.floor( target_shape / 2 ).astype( 'int64' )
+        upper_span = target_shape - ( lower_span + 1 )
+        target_bounds = numpy.array(( centre - lower_span, centre + upper_span ))
+
+        def correction( axis ):
+
+            offset_to_minimum = target_bounds[0][axis] - outer_bounds[0][axis]
+            offset_to_maximum = outer_bounds[1][axis] - target_bounds[1][axis]
+
+            if offset_to_maximum + offset_to_minimum < 0:
+                raise Exception( "cannot fit target", target_shape, "to bounds", outer_bounds )
+
+            elif offset_to_minimum < 0:
+                shift_up = abs( offset_to_minimum )
+                corrected_minimum = outer_bounds[0][axis]
+                corrected_maximum = target_bounds[1][axis] + shift_up
+                return ( corrected_minimum, corrected_maximum )
+
+            elif offset_to_maximum < 0:
+                shift_down = abs( offset_to_maximum )
+                corrected_minimum = target_bounds[0][axis] - shift_down
+                corrected_maximum = outer_bounds[1][axis]
+                return ( corrected_minimum, corrected_maximum )
+
+            else:
+                return target_bounds[ :, axis]
+
+        corrected = numpy.array([ correction( axis ) for axis in range( 0, 3 ) ]).T
+        return corrected
+
+
+    @staticmethod
+    def offsets_in_volume( bounds, patch_shape, patch_stride ) :
 
         assert len( patch_shape ) == 3
 
@@ -160,37 +209,51 @@ class PatchSet( object ):
 
 
     @staticmethod
-    def extract( volume_data, offsets_per_volume, patch_shape ) :
+    def extract( volume_data, volume_offset, patch_offsets, patch_shape ) :
 
         assert len( patch_shape ) == 3
 
         patches = numpy.array([
-            volume_data[ volume_index ][
-                offsets[ 0 ] : offsets[ 0 ] + patch_shape[ 0 ],
-                offsets[ 1 ] : offsets[ 1 ] + patch_shape[ 1 ],
-                offsets[ 2 ] : offsets[ 2 ] + patch_shape[ 2 ] ]
-            for volume_index, offsets_for_volume in enumerate( offsets_per_volume )
-            for offsets in offsets_for_volume  ] )
+            volume_data[ v - volume_offset ][
+                z : z + patch_shape[ 0 ],
+                y : y + patch_shape[ 1 ],
+                x : x + patch_shape[ 2 ] ]
+            for v, z, y, x in patch_offsets  ] )
 
         return patches
 
 
-    def __init__( self, volumes, offsets_per_volume, patch_shape, log = output.Log() ) :
+    def __init__(
+            self,
+            volumes,
+            volume_offset,
+            patch_offsets_per_volume,
+            patch_shape,
+            log = output.Log() ) :
 
         log.entry( "constructing batch" )
-        self.__patch_offsets = offsets_per_volume
+
+        log.item( "updating patch offsets" )
+        patch_offsets = numpy.array(
+            [ ( v + volume_offset, z, y, x )
+              for v, offsets in enumerate( patch_offsets_per_volume )
+              for z, y, x in offsets ] )
+        self.__patch_offsets = patch_offsets
 
         log.item( "extracting image patches" )
         image_data = [ volume.images for volume in volumes ]
-        self.__image_patches = PatchSet.extract( image_data, offsets_per_volume, patch_shape )
+        self.__image_patches = PatchSet.extract(
+            image_data, volume_offset, patch_offsets, patch_shape )
 
         log.item( "extracting label patches" )
         label_data = [ volume.labels for volume in volumes ]
-        self.__label_patches = PatchSet.extract( label_data, offsets_per_volume, patch_shape )
+        self.__label_patches = PatchSet.extract(
+            label_data, volume_offset, patch_offsets, patch_shape )
 
         log.item( "extracting mask patches" )
         mask_data = [ volume.masks for volume in volumes ]
-        self.__mask_patches = PatchSet.extract( mask_data, offsets_per_volume, patch_shape )
+        self.__mask_patches = PatchSet.extract(
+            mask_data, volume_offset, patch_offsets, patch_shape )
 
 
     @property
@@ -240,7 +303,7 @@ class RandomPatchSet( PatchSet ):
           - group consecutive columns according to the parameter patch_count divided by
             the volume_count
 
-      * the subsets formed from the interscetion of a row and column group will consist of 
+      * the subsets formed from the intersection of a row and column group will consist of 
         approximately patch_count patches drawn from volume_count volumes. 
 
       * the exact number may be less than patch_count if:
@@ -272,26 +335,26 @@ class RandomPatchSet( PatchSet ):
         end = maybe_end if maybe_end <= len( aquisitions ) else len( aquisitions )
 
         volumes = [ aquisition.read_volume() for aquisition in aquisitions[ start : end ] ]
-        return volumes
+        return volumes, start
 
 
     @staticmethod
     def random_subset_of_offsets(
-            offsets,
+            offsets_in_volume,
             batch,
             batches_per_iteration,
             patches_per_volume_per_batch,
             random_generator ):
 
-        patches_in_volume = len( offsets )
+        patches_in_volume = len( offsets_in_volume )
         number_of_batches_drawn_from_this_volume = math.floor( batch / batches_per_iteration )
 
         start = number_of_batches_drawn_from_this_volume * patches_per_volume_per_batch
         maybe_end = ( number_of_batches_drawn_from_this_volume + 1 ) * patches_per_volume_per_batch
         end = maybe_end if maybe_end <= patches_in_volume else patches_in_volume
 
-        random_offsets = random_generator.permutation( offsets )
-        return random_offsets[ start : end ]
+        random_offsets_in_volume = random_generator.permutation( offsets_in_volume )
+        return random_offsets_in_volume[ start : end ]
 
 
     def __init__( self, aquisitions, batch, parameters, random_generator, log = output.Log() ):
@@ -301,18 +364,19 @@ class RandomPatchSet( PatchSet ):
         batches_per_iteration = math.ceil( volume_count / float( volumes_per_batch ) )
         patches_per_volume_per_batch = math.floor( parameters.patch_count / volumes_per_batch )
 
-        volumes = RandomPatchSet.volumes_for_batch(
+        volumes, volume_offset = RandomPatchSet.volumes_for_batch(
             aquisitions,
             batch,
             batches_per_iteration,
             volumes_per_batch )
 
-        bounds = PatchSet.normalised_bounds_of_unmasked_regions( volumes )
-
         random_offsets_per_volume = [
             RandomPatchSet.random_subset_of_offsets(
-                PatchSet.offsets(
-                    bounds[ i ],
+                PatchSet.offsets_in_volume(
+                    PatchSet.target_bounds(
+                        volume.bounds,
+                        volume.unmasked_bounds,
+                        numpy.array( parameters.target_shape ) ),
                     parameters.patch_shape,
                     parameters.patch_stride ),
                 batch,
@@ -323,6 +387,7 @@ class RandomPatchSet( PatchSet ):
 
         super( RandomPatchSet, self ).__init__(
             volumes,
+            volume_offset,
             random_offsets_per_volume,
             parameters.patch_shape,
             log )
@@ -330,7 +395,7 @@ class RandomPatchSet( PatchSet ):
 
 #---------------------------------------------------------------------------------------------------
 
-class ContiguousPatchSet( PatchSet ):
+class SequentialPatchSet( PatchSet ):
     '''
     A set of patches sampled from contiguous regions in one or more volumes.
 
@@ -368,44 +433,6 @@ class ContiguousPatchSet( PatchSet ):
 
 
     @staticmethod
-    def target_bounds( outer_bounds, inner_bounds, target_shape ):
-
-        inner_shape = inner_bounds[1] - inner_bounds[0] + 1
-        inner_span = numpy.floor( inner_shape / 2 ).astype( 'int64' )
-        centre = inner_bounds[0] + inner_span
-
-        lower_span = numpy.floor( target_shape / 2 ).astype( 'int64' )
-        upper_span = target_shape - ( lower_span + 1 )
-        target_bounds = numpy.array(( centre - lower_span, centre + upper_span ))
-
-        def correction( axis ):
-
-            offset_to_minimum = target_bounds[0][axis] - outer_bounds[0][axis]
-            offset_to_maximum = outer_bounds[1][axis] - target_bounds[1][axis]
-
-            if offset_to_maximum + offset_to_minimum < 0:
-                raise Exception( "cannot fit target", target_shape, "to bounds", outer_bounds )
-
-            elif offset_to_minimum < 0:
-                shift_up = abs( offset_to_minimum )
-                corrected_minimum = outer_bounds[0][axis]
-                corrected_maximum = target_bounds[1][axis] + shift_up
-                return ( corrected_minimum, corrected_maximum )
-
-            elif offset_to_maximum < 0:
-                shift_down = abs( offset_to_maximum )
-                corrected_minimum = target_bounds[0][axis] - shift_down
-                corrected_maximum = outer_bounds[1][axis]
-                return ( corrected_minimum, corrected_maximum )
-
-            else:
-                return target_bounds[ :, axis]
-
-        corrected = numpy.array([ correction( axis ) for axis in range( 0, 3 ) ]).T
-        return corrected
-
-
-    @staticmethod
     def subset_of_offsets( offsets, volume, start, end ):
 
         start_volume, start_patch_for_batch = start
@@ -419,11 +446,11 @@ class ContiguousPatchSet( PatchSet ):
 
     def __init__( self, aquisitions, batch, parameters, log = output.Log() ):
 
-        start = ContiguousPatchSet.volume_and_patch_index_for_batch( batch, parameters )
+        start = SequentialPatchSet.volume_and_patch_index_for_batch( batch, parameters )
         start_volume = start[ 0 ]
         start_in_batch = ( 0, start[1] )
 
-        end = ContiguousPatchSet.volume_and_patch_index_for_batch( batch + 1, parameters )
+        end = SequentialPatchSet.volume_and_patch_index_for_batch( batch + 1, parameters )
         end_patch = end[ 1 ]
         end_volume = end[ 0 ] if end_patch == 0 else end[ 0 ] + 1
         end_in_batch = ( end_volume - start_volume, end[1] )
@@ -432,8 +459,8 @@ class ContiguousPatchSet( PatchSet ):
             aquisition.read_volume() for aquisition in aquisitions[ start_volume : end_volume ] ]
 
         offsets_per_volume = [
-            PatchSet.offsets(
-                ContiguousPatchSet.target_bounds(
+            PatchSet.offsets_in_volume(
+                PatchSet.target_bounds(
                     volume.bounds,
                     volume.unmasked_bounds,
                     numpy.array( parameters.target_shape ) ),
@@ -442,15 +469,16 @@ class ContiguousPatchSet( PatchSet ):
             for volume in volumes ]
 
         offsets_per_volume_in_this_batch = [
-            ContiguousPatchSet.subset_of_offsets(
+            SequentialPatchSet.subset_of_offsets(
                 offsets_per_volume[ i ],
                 i,
                 start_in_batch,
                 end_in_batch )
             for i in range( len( volumes ) ) ]
 
-        super( ContiguousPatchSet, self ).__init__(
+        super( SequentialPatchSet, self ).__init__(
             volumes,
+            start_volume,
             offsets_per_volume_in_this_batch,
             parameters.patch_shape,
             log )
@@ -458,39 +486,146 @@ class ContiguousPatchSet( PatchSet ):
 
 #---------------------------------------------------------------------------------------------------
 
+
 class Accessor( object ) :
 
 
     def __init__(
             self,
-            dataset,
-            training_batch_parameters,
-            label_conversion ) :
+            aquisitions,
+            sample_parameters,
+            image_normalisation,
+            label_conversion,
+            log = output.Log() ) :
 
+        self.__image_nomalisation = image_normalisation
         self.__label_conversion = label_conversion
-        self.__dataset = dataset
-        self.__training_batch_parameters = training_batch_parameters
-        self.__validation_batch_parameters = \
-            training_batch_parameters.with_volume_count( len( dataset.validation_set ) )
+        self.__sample_parameters = sample_parameters
+        self.__aquisitions = aquisitions
+        self.__log = log
+
+        volume_count = len( self.aquisitions )
+        target_shape = self.sample_parameters.target_shape
+        patch_shape = self.sample_parameters.patch_shape
+        patch_count = self.sample_parameters.patch_count
+        self.__length = PatchSet.batches_per_epoch(
+            volume_count, target_shape, patch_shape, patch_count )
 
 
-    def images_and_labels( self, data_subset, batch_parameters, batch_index ) :
+    @property
+    def aquisitions( self ):
 
-        batch = Batch( data_subset, batch_index, batch_parameters )
-        label_distribution = self.__label_conversion.distribution_for_patches( batch.label_patches )
-        return ( batch.image_patches, label_distribution, batch.patch_grid_shape )
+        return self.__aquisitions
+        
+
+    @property
+    def sample_parameters( self ):
+
+        return self.__sample_parameters
+        
+
+    @property
+    def log( self ):
+
+        return self.__log
 
 
-    def training_images_and_labels( self, batch_index ) :
+    def label_conversion( self, labels ):
 
-        return self.images_and_labels(
-            self.__dataset.training_set, self.__training_batch_parameters, batch_index )
+        return self.__label_conversion( labels ) 
 
 
-    def validation_images_and_labels( self, batch_index ) :
+    def image_normalisation( self, images ):
+        
+        return self.__image_nomalisation( images )
+        
 
-        return self.images_and_labels(
-            self.__dataset.validation_set, self.__validation_batch_parameters, batch_index )
+    def patch_set( self, batch ):
+
+        raise NotImplementedError()
+
+
+    def __len__( self ):
+
+        assert self.__length >= 0
+        return int( self.__length )
+    
+
+    def __iter__( self ):
+
+        class Iterator( object ):
+
+            def __init__( self, accessor ):
+                self.batch = 0
+                self.accessor = accessor
+
+            def __next__( self ):
+                if self.batch < len( self.accessor ):
+                    patches = self.accessor.patch_set( self.batch )
+                    images = self.accessor.image_normalisation( patches.image_patches )
+                    labels = self.accessor.label_conversion( patches.label_patches )
+                    offsets = patches.patch_offsets
+                    self.batch += 1
+                    return ( images, labels, offsets )
+                else:
+                    raise StopIteration()
+
+        return Iterator( self )
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class SequentialAccessor( Accessor ):
+
+
+    def patch_set( self, batch ):
+
+        return SequentialPatchSet(
+            self.aquisitions,
+            batch,
+            self.sample_parameters,
+            self.log )
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class RandomAccessor( Accessor ):
+
+
+    def __init__(
+            self,
+            aquisitions,
+            sample_parameters,
+            image_normalisation,
+            label_conversion,
+            random_generator,
+            log = output.Log() ) :
+
+        self.__random_generator = random_generator
+        super( RandomAccessor, self ).__init__(
+            aquisitions,
+            sample_parameters,
+            image_normalisation,
+            label_conversion,
+            log )
+
+
+    @property
+    def random_generator( self ):
+
+        return self.__random_generator
+    
+
+    def patch_set( self, batch ):
+
+        return RandomPatchSet(
+            self.aquisitions,
+            batch,
+            self.sample_parameters,
+            self.random_generator,
+            self.log )
 
 
 #---------------------------------------------------------------------------------------------------

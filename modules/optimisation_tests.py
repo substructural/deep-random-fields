@@ -128,8 +128,8 @@ class Mock :
             self.on_epoch_arguments = []
             self.verbosity = verbosity
 
-        def on_batch( self, epoch, batch, cost, labels ):
-            self.on_batch_arguments.append(( epoch, batch, cost, labels ))
+        def on_batch( self, epoch, batch, cost, labels, positions ):
+            self.on_batch_arguments.append(( epoch, batch, cost, labels, positions ))
             if self.verbosity > 1:
                 print( self.on_batch_arguments[ -1 ] )
 
@@ -276,15 +276,19 @@ class OptimiserTests( unittest.TestCase ):
         validation_step = optimiser.validation_step( model )
 
         monitor = Mock.MonitorWhichRecordsCallsMadeToIt()
-        data = [ ( [ 2.0 ], [ 3.0 ] ), ( [ 3.0 ], [ 4.5 ] ), ( [ 4.0 ], [ 6.0 ] ) ]
+        data = [ ( [2.0], [3.0], [(1,0)] ), ( [3.0], [4.5], [(1,1)] ), ( [4.0], [6.0], [(2,0)] ) ]
         mean_cost = optimiser.iterate( validation_step, "validation", 42, data, monitor, model )
         
-        recorded_outputs = numpy.array( [ y for ( e, b, c, y ) in monitor.on_batch_arguments ] )
-        expected_outputs = numpy.array( [ [ 2 * x[0] ] for ( x, t ) in data ] )
+        recorded_positions = numpy.array( [ p for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
+        expected_positions = numpy.array( [ p for ( x, y, p ) in data ] )
+        self.assertTrue( numpy.array_equal( recorded_positions, expected_positions ) )
+        
+        recorded_outputs = numpy.array( [ y for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
+        expected_outputs = numpy.array( [ [ 2 * x[0] ] for ( x, y, p ) in data ] )
         self.assertTrue( numpy.array_equal( recorded_outputs, expected_outputs ) )
 
-        recorded_costs = numpy.array( [ c for ( e, b, c, y ) in monitor.on_batch_arguments ] )
-        expected_costs = numpy.array( [ ( 2 * x[0] ) - t[0] for ( x, t ) in data ] )
+        recorded_costs = numpy.array( [ c for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
+        expected_costs = numpy.array( [ ( 2 * x[0] ) - y[0] for ( x, y, p ) in data ] )
         self.assertTrue( numpy.array_equal( recorded_costs, expected_costs ) )
 
         recorded_mean_costs = [ c for ( e, c ) in monitor.on_epoch_arguments ]
@@ -368,7 +372,7 @@ class StochasticGradientDescentTests( unittest.TestCase ):
             recent_cost_sample_size = 3,
             convergence_threshold = 0.00001 )
             
-        log = output.Log()
+        log = output.Log( sys.stdout )
         cost_function = Mock.MeanSquaredDifferenceCost( weight_L1 = 0.1, weight_L2 = 0.1 )
         learning_rate_schedule = learning_rates.RMSPropLearningRate( 0.01, 0.9 )
         optimiser = optimisation.StochasticGradientDescent(
@@ -378,8 +382,9 @@ class StochasticGradientDescentTests( unittest.TestCase ):
         n = lambda : random.randrange( -100, 100, 1 ) * 0.0001
         xs = numpy.array([ [ r() for i in range( 0, 20 ) ] for j in range( 0, 10 ) ])
         ys = numpy.array([ [ n() + ( 2 * x + 1 ) for x in xs_i ] for xs_i in xs ])
+        ps = numpy.array([ [ (j, i) for i in range( 0, 20 ) ] for j in range( 0, 10 ) ])
 
-        optimisation_data = list( zip( xs, ys ) )
+        optimisation_data = list( zip( xs, ys, ps ) )
         optimisation_monitor = Mock.MonitorWhichRecordsCallsMadeToIt( verbosity = 0 )
 
         validation_data = optimisation_data
@@ -388,11 +393,11 @@ class StochasticGradientDescentTests( unittest.TestCase ):
         optimiser.optimise_until_converged(
             model, optimisation_data, validation_data, optimisation_monitor, validation_monitor )
 
-        ps = numpy.array( [ model.predict( x ) for x in xs ] )
-        es = numpy.array( [ ys[ i ] - ps[ i ] for i in range( len( ys ) ) ] )
+        cs = numpy.array( [ model.predict( x ) for x in xs ] )
+        es = numpy.array( [ ys[ i ] - cs[ i ] for i in range( len( ys ) ) ] )
 
         log.subsection( "results" )
-        log.entry( "predicted: "  + str( ps ) )
+        log.entry( "computed:  "  + str( cs ) )
         log.entry( "expected:  "  + str( ys ) )
         log.entry( "errors:    "  + str( es ) )
         log.entry( "parameters:" )

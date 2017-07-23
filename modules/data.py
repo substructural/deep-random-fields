@@ -235,3 +235,30 @@ class Dataset( object ) :
 
 
 #---------------------------------------------------------------------------------------------------
+
+
+class Normalisation:
+
+
+    @staticmethod
+    def transform_to_zero_mean_and_unit_variance(
+            images,
+            lower_percentile = 5,
+            upper_percentile = 95 ):
+
+        image_min = N.percentile( images, lower_percentile )
+        image_max = N.percentile( images, upper_percentile )
+
+        mask = N.ones( images.shape ) 
+        mask[ images <= image_min ] = 0
+        mask[ images >= image_max ] = 0
+
+        count = N.sum( mask )
+        mean = N.sum( images * mask ) / count
+        variance = N.sum( ( ( images - mean ) * mask ) ** 2 ) / count
+
+        return ( images - mean ) / variance
+    
+
+
+#---------------------------------------------------------------------------------------------------
