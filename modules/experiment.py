@@ -10,7 +10,9 @@ from numpy import logical_not as negation
 import data
 import labels
 import network
+import optimisation
 import output
+import results
 
 
 #---------------------------------------------------------------------------------------------------
@@ -127,170 +129,89 @@ class Experiment( object ) :
 
 #---------------------------------------------------------------------------------------------------
 
-class Results( object ):
+class TrainingResultsAccumulator( optimisation.Monitor ):
+
+    pass
 
 
-    def __init__( self, label_conversion, parameters, maybe_log = None ):
+#---------------------------------------------------------------------------------------------------
 
+class ValidationResultsAccumulator( optimisation.Monitor ):
+
+
+    def __init__(
+            self, data_path, results_id, label_conversion, parameters, log = output.Log() ):
+
+        self.__log = log
         self.__parameters = parameters
         self.__label_conversion = label_conversion
-        self.__training_costs = []
-        self.__validation_costs = []
-        self.__dice_scores = []
-        self.__log = maybe_log if maybe_log else output.Log()
+        self.__results_id = results_id
+        self.__data_path = data_path
+
+        accumulator_shape = ( 0, ) + parameters.patch_shape
+        self.__predicted = numpy.zeros(( accumulator_shape ))
+        self.__reference = numpy.zeros(( accumulator_shape ))
+        self.__positions = numpy.zeros(( 0, 4 ))
+
+        self.__results = None
+    
+
+    def results_for_epoch( self, epoch, class_count ):
+
+        if not self.__results or self.__results.epoch != epoch:
+            self.__results = results.SegmentationResults(
+                self.__data_path,
+                self.__results_id,
+                epoch,
+                class_count,
+                self.__label_conversion,
+                self.__log )
+        else:
+            return self.__results 
 
 
-    @property
-    def log( self ):
+    def on_batch( self, epoch, batch, predicted, reference, positions ):
 
-        return self.__log
+        assert batch is not None
 
+        target_shape = numpy.array( self.__parameters.target_shape )
+        patch_shape = numpy.array( self.__parameters.patch_shape )
+        patch_count_per_volume = numpy.prod( target_shape // patch_shape )
+        class_count = predicted.shape[-1]
 
-    @property
-    def parameters( self ):
+        results_for_epoch = self.results_for_epoch( epoch, class_count )
 
-        return self.__parameters
+        self.__positions = numpy.concatenate( self.__positions, positions )
+        self.__predicted = numpy.concatenate( self.__predicted, predicted )
+        self.__reference = numpy.concatenate( self.__reference, reference )
 
+        assert self.__predicted.shape == self.__reference.shape
 
-    @property
-    def label_conversion( self ):
+        accumulated_count = self.__predicted.shape[0]
+        completed_count = accumulated_count // patch_count_per_volume
+        
+        if completed_count > 0:
 
-        return self.__label_conversion
-
-
-    @property
-    def training_costs( self ):
-
-        return self.__training_costs
-
-
-    @property
-    def validation_costs( self ):
-
-        return self.__validation_costs
-
-
-    @property
-    def dice_scores( self ):
-
-        return self.__dice_scores
-
-
-    def saved_object_file_name( self, object_type, epoch = None ):
-
-        directory = self.parameters.output_path
-        epoch_tag = str( epoch ) + "-" if epoch is not None else ""
-        filename = self.parameters.experiment_id + "-" + epoch_tag + object_type + ".npy"
-        return directory + "/" + filename
+            for i in range( completed_count ):
+                m = patch_count_per_volume * i
+                n = patch_count_per_volume * ( i + 1 )
+                volume_id = self.__positions[ m ][ 0 ]
+                results_for_epoch.append_and_save(
+                    volume_id,
+                    self.__predicted[ m : n ],
+                    self.__reference[ m : n ],
+                    target_shape )
+            
+            self.__predicted = numpy.delete( self.__predicted, completed_count, 0 )
+            self.__reference = numpy.delete( self.__reference, completed_count, 0 )
 
 
-    def save_array_output( self, output, object_type, epoch = None ):
+    def on_epoch( self, epoch, mean_cost, model ):
 
-        directory = self.parameters.output_path
-        if not os.path.exists( directory ):
-            os.mkdir( directory )
-
-        filepath = self.saved_object_file_name( object_type, epoch )
-        numpy.save( filepath, output, allow_pickle=False )
-
-        self.log.item( "saved " + object_type + " to " + filepath )
-        return filepath
-
-
-    def on_batch_event( self, batch_index, training_output, training_costs ) :
-
-        self.log.item( "batch {0:03d} costs: {1:0.5f}".format( batch_index, training_costs ) )
-
-
-    def on_epoch_event(
-            self,
-            epoch_index,
-            model,
-            patch_grid,
-            validation_labels,
-            validation_output,
-            validation_cost,
-            training_costs ) :
-
-        self.log.subsection( "recording results for epoch " + str( epoch_index ) )
-
-        classes = self.parameters.class_count
-        volumes = validation_labels.shape[ 0 ]
-        test_labels = self.label_conversion.labels_for_volumes( validation_output, patch_grid )
-        true_labels = self.label_conversion.labels_for_volumes( validation_labels, patch_grid )
-        test_masks = labels.dense_volume_indices_to_dense_volume_masks( test_labels, classes )
-        true_masks = labels.dense_volume_indices_to_dense_volume_masks( true_labels, classes )
-        mean_dice_scores_per_class = Metrics.mean_dice_score_per_class( test_masks, true_masks )
-
-        self.log.item( "validation cost:" + str( validation_cost ) )
-        self.log.item( "mean dice scores per class:" )
-        self.log.record( { "class " + str( i ): mean_dice_scores_per_class[ i ]
-                           for i in range( 0, len( mean_dice_scores_per_class ) ) } )
-
-        self.save_array_output( model, "model", epoch_index )
-        self.save_array_output( validation_output, "output", epoch_index )
-        self.save_array_output( test_labels, "labels", epoch_index )
-        self.save_array_output( test_masks, "masks", epoch_index )
-        for c in range( 0, classes ):
-            difference_map = Images.difference_of_masks( test_masks[ :, c ], true_masks[ :, c ] )
-            self.save_array_output( difference_map, "class-" + str( c ), epoch_index )
-
-        self.training_costs.append( training_costs )
-        self.validation_costs.append( validation_cost )
-        self.dice_scores.append( mean_dice_scores_per_class )
-
-
-#---------------------------------------------------------------------------------------------------
-
-class Metrics:
-
-
-    @staticmethod
-    def dice_score( predicted, reference ):
-
-        true_positives = numpy.count_nonzero( predicted & reference )
-        false_positives = numpy.count_nonzero( predicted & negation( reference ) )
-        false_negatives = numpy.count_nonzero( reference & negation( predicted ) )
-
-        return (
-            ( 2.0 * true_positives ) /
-            ( 2.0 * true_positives + false_positives + false_negatives ) )
-
-
-    @staticmethod
-    def mean_dice_score_per_class( predicted_masks_per_volume, reference_masks_per_volume ):
-        volumes = predicted_masks_per_volume.shape[ 0 ]
-        classes = predicted_masks_per_volume.shape[ 1 ]
-        dice = lambda v, c : Metrics.dice_score( predicted_masks_per_volume[ v, c ],
-                                                 reference_masks_per_volume[ v, c ] )
-
-        return [
-            ( 1 / volumes ) * sum( [ dice( v, c ) for v in range( 0, volumes ) ] )
-            for c in range( 0, classes ) ]
-
-
-#---------------------------------------------------------------------------------------------------
-
-class Images:
-
-
-    @staticmethod
-    def difference_of_masks( predicted, reference ):
-
-        r, g, b = 0, 1, 2
-        difference_shape = ( 3, ) + predicted.shape
-
-        true_positives  = ( predicted & reference ) == 1
-        false_positives = ( predicted & negation( reference ) ) == 1
-        false_negatives = ( reference & negation( predicted ) ) == 1
-
-        difference_map = numpy.zeros( difference_shape ).astype( 'uint8' )
-        difference_map[ g ][ true_positives  ] = 0xD0
-        difference_map[ r ][ false_positives ] = 0xD0
-        difference_map[ b ][ false_negatives ] = 0xD0
-
-        permutation_to_rgb_values = [ i for i in range( 1, len( difference_shape ) ) ] + [ 0 ]
-        return numpy.transpose( difference_map, permutation_to_rgb_values )
+        assert mean_cost is not None
+        
+        model_parameters = model.save_to_map()
+        self.__results.archive.save_model_parameters( model_parameters, epoch = epoch )
 
 
 #---------------------------------------------------------------------------------------------------

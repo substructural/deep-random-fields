@@ -203,5 +203,15 @@ class Model( object ) :
         return self.__predictor( inputs )
 
 
+    def save_to_map( self ):
+
+        data = dict(
+            [ ( str(i) + ':' + w.name, w.get_value() )
+              for i, layer in enumerate( self.parameters )
+              for w in layer ] )
+
+        return data
+
+
 
 #---------------------------------------------------------------------------------------------------

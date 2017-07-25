@@ -129,17 +129,17 @@ class Parameters( object ):
 class Monitor( object ):
 
 
-    def on_batch( self, epoch, batch, cost, labels ):
+    def on_batch( self, epoch, batch, predicted_distribution, reference_distribution, offsets ):
         ''' 
-        Event handler called on completion of a batch during validation. 
+        Event handler called on completion of a batch during training or validation. 
 
         '''
         pass
 
 
-    def on_epoch( self, epoch, mean_cost ):
+    def on_epoch( self, epoch, mean_cost, model ):
         ''' 
-        Event handler called on completion of an epoch during validation. 
+        Event handler called on completion of an epoch during training or validation. 
 
         '''
         pass
@@ -230,7 +230,7 @@ class Optimiser( object ) :
         return self.__learning_rate
 
 
-    def updates( self, model, parameter, cost ):
+    def updates( self, model, cost ):
 
         raise NotImplementedError
     
@@ -258,27 +258,19 @@ class Optimiser( object ) :
 
     def iterate(self, step, step_name, epoch, data, monitor, model ):
 
-        self.log.subsection( step_name + " for epoch" + str(epoch) )
+        self.log.subsection( step_name + " for epoch " + str(epoch) )
         costs = []
 
-        for batch, ( images, labels, positions ) in enumerate( data ):
+        for batch, ( images, distribution, positions ) in enumerate( data ):
 
-            state = []
-            for names_and_values in model.parameter_names_and_values:
-                state.append( dict( names_and_values ) )
-
-            predicted_labels, cost = step( images, labels )
+            predicted_distribution, cost = step( images, distribution )
 
             costs.append( cost )
-            monitor.on_batch( epoch, batch, cost, predicted_labels, positions )
-            self.log.entry( step_name + " batch " + str(batch) )
-
-            for layer in state:
-                layer[ 'cost' ] = cost
-                self.log.record( layer )
+            monitor.on_batch( epoch, batch, predicted_distribution, distribution, positions )
+            self.log.entry( step_name + " batch " + str(batch) + ", cost: " + str( cost ) )
 
         mean_cost = numpy.sum( costs ) / len( costs )
-        monitor.on_epoch( epoch, mean_cost )
+        monitor.on_epoch( epoch, mean_cost, model )
         self.log.entry( step_name + " cost for epoch: " + str(mean_cost) )
 
         return mean_cost

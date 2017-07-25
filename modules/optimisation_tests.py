@@ -128,13 +128,14 @@ class Mock :
             self.on_epoch_arguments = []
             self.verbosity = verbosity
 
-        def on_batch( self, epoch, batch, cost, labels, positions ):
-            self.on_batch_arguments.append(( epoch, batch, cost, labels, positions ))
+        def on_batch( self, epoch, batch, predicted_distribution, reference_distribution, offsets ):
+            self.on_batch_arguments.append((
+                epoch, batch, predicted_distribution, reference_distribution, offsets ))
             if self.verbosity > 1:
                 print( self.on_batch_arguments[ -1 ] )
 
-        def on_epoch( self, epoch, mean_cost ):
-            self.on_epoch_arguments.append(( epoch, mean_cost ))
+        def on_epoch( self, epoch, mean_cost, model ):
+            self.on_epoch_arguments.append(( epoch, mean_cost, model ))
             if self.verbosity > 0:
                 print( self.on_epoch_arguments[ -1 ] )
 
@@ -148,7 +149,8 @@ class OptimiserUnderTest( optimisation.Optimiser ):
         self.__update_functor = update_functor
         simple_difference_cost = Mock.SimpleDifferenceCostFunction()
         optimisation_parameters = optimisation.Parameters()
-        super( OptimiserUnderTest, self ).__init__( simple_difference_cost, optimisation_parameters )
+        super( OptimiserUnderTest, self ).__init__(
+            simple_difference_cost, optimisation_parameters )
 
     def updates( self, model, cost ):
         return self.__update_functor( model, cost )
@@ -158,14 +160,14 @@ class OptimiserWithMockSteps( optimisation.Optimiser ):
 
     Step = collections.namedtuple( 'Step', [ 'step', 'step_name', 'epoch', 'data', 'monitor' ] )
 
-    def __init__( self, costs, parameters ):
+    def __init__( self, costs_per_epoch, parameters ):
         self.steps = []
-        self.costs = costs
+        self.costs = costs_per_epoch
         simple_difference = Mock.SimpleDifferenceCostFunction()
         super( OptimiserWithMockSteps, self ).__init__( simple_difference, parameters )
 
-    def updates( self, parameter, cost ):
-        raise Exception()
+    def updates( self, model, cost ):
+        raise Exception( "The optimisation step for this class does not update the model.")
 
     def optimisation_step( self, model ):
         return "optimisation_step"
@@ -279,19 +281,19 @@ class OptimiserTests( unittest.TestCase ):
         data = [ ( [2.0], [3.0], [(1,0)] ), ( [3.0], [4.5], [(1,1)] ), ( [4.0], [6.0], [(2,0)] ) ]
         mean_cost = optimiser.iterate( validation_step, "validation", 42, data, monitor, model )
         
-        recorded_positions = numpy.array( [ p for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
-        expected_positions = numpy.array( [ p for ( x, y, p ) in data ] )
+        recorded_positions = numpy.array( [ p for (e, b, pd, rd, p) in monitor.on_batch_arguments ] )
+        expected_positions = numpy.array( [ p for (x, y, p) in data ] )
         self.assertTrue( numpy.array_equal( recorded_positions, expected_positions ) )
         
-        recorded_outputs = numpy.array( [ y for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
-        expected_outputs = numpy.array( [ [ 2 * x[0] ] for ( x, y, p ) in data ] )
-        self.assertTrue( numpy.array_equal( recorded_outputs, expected_outputs ) )
+        recorded_predictions = numpy.array( [ pd for ( e, b, pd, rd, p ) in monitor.on_batch_arguments ] )
+        expected_predictions = numpy.array( [ [ 2 * x[0] ] for ( x, y, p ) in data ] )
+        self.assertTrue( numpy.array_equal( recorded_predictions, expected_predictions ) )
 
-        recorded_costs = numpy.array( [ c for ( e, b, c, y, p ) in monitor.on_batch_arguments ] )
-        expected_costs = numpy.array( [ ( 2 * x[0] ) - y[0] for ( x, y, p ) in data ] )
-        self.assertTrue( numpy.array_equal( recorded_costs, expected_costs ) )
+        recorded_distribution = numpy.array( [ rd for ( e, b, pd, rd, p ) in monitor.on_batch_arguments ] )
+        expected_distribution = numpy.array( [ rd for ( x, rd, p ) in data ] )
+        self.assertTrue( numpy.array_equal( recorded_distribution, expected_distribution ) )
 
-        recorded_mean_costs = [ c for ( e, c ) in monitor.on_epoch_arguments ]
+        recorded_mean_costs = [ c for ( e, c, m ) in monitor.on_epoch_arguments ]
         expected_mean_cost = 1.5 # = 1/3 * ( 3-2 + 4.5-3 + 6-4 )
         self.assertEqual( mean_cost, expected_mean_cost )
         self.assertEqual( len( recorded_mean_costs ), 1 )
