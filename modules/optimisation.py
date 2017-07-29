@@ -194,8 +194,8 @@ class Optimiser( object ) :
 
     def __init__(
             self,
-            cost_function,
             parameters,
+            cost_function,
             learning_rate = None,
             log = output.Log() ) :
 

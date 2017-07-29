@@ -150,7 +150,7 @@ class OptimiserUnderTest( optimisation.Optimiser ):
         simple_difference_cost = Mock.SimpleDifferenceCostFunction()
         optimisation_parameters = optimisation.Parameters()
         super( OptimiserUnderTest, self ).__init__(
-            simple_difference_cost, optimisation_parameters )
+            optimisation_parameters, simple_difference_cost )
 
     def updates( self, model, cost ):
         return self.__update_functor( model, cost )
@@ -164,7 +164,7 @@ class OptimiserWithMockSteps( optimisation.Optimiser ):
         self.steps = []
         self.costs = costs_per_epoch
         simple_difference = Mock.SimpleDifferenceCostFunction()
-        super( OptimiserWithMockSteps, self ).__init__( simple_difference, parameters )
+        super( OptimiserWithMockSteps, self ).__init__( parameters, simple_difference )
 
     def updates( self, model, cost ):
         raise Exception( "The optimisation step for this class does not update the model.")
@@ -378,7 +378,7 @@ class StochasticGradientDescentTests( unittest.TestCase ):
         cost_function = Mock.MeanSquaredDifferenceCost( weight_L1 = 0.1, weight_L2 = 0.1 )
         learning_rate_schedule = learning_rates.RMSPropLearningRate( 0.01, 0.9 )
         optimiser = optimisation.StochasticGradientDescent(
-            cost_function, parameters, learning_rate_schedule, log )
+            parameters, cost_function, learning_rate_schedule, log )
         
         r = lambda : random.randrange( -100, 100, 1 ) * 0.05
         n = lambda : random.randrange( -100, 100, 1 ) * 0.0001
