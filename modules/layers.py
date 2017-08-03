@@ -12,6 +12,25 @@ import network
 
 #---------------------------------------------------------------------------------------------------
 
+class ScalarFeatureMapsProbabilityDistribution( network.Layer ):
+
+
+    def initial_parameter_values( self ):
+
+        return []
+
+
+    def graph( self, parameters, inputs ):
+
+        dimensions = len( list( T.tensor.shape( inputs ) ) )
+        patch_dimensions = dimensions - 2
+        probability_axis_last = [ 0 ] + [ i + 2 for i in range( patch_dimensions ) ] + [ 1 ]
+        return inputs.dimshuffle( probability_axis_last )
+        
+
+
+#---------------------------------------------------------------------------------------------------
+
 class Softmax( network.Layer ) :
 
 
@@ -24,8 +43,28 @@ class Softmax( network.Layer ) :
 
         assert( parameters == [] )
 
-        softmax = T.tensor.exp( inputs ) / T.tensor.sum( T.tensor.exp( inputs ) )
-        return softmax
+        dimensions = len( list( T.tensor.shape( inputs ) ) )
+        patch_dimensions = dimensions - 2
+        switch_labels_and_batch = [ 1, 0 ] + [ i + 2 for i in range( patch_dimensions ) ]
+
+        p = inputs.dimshuffle( switch_labels_and_batch )
+        z = T.tensor.sum( inputs, axis = 1 )
+        softmax = T.tensor.exp( p - z )
+        return softmax.dimshuffle( switch_labels_and_batch )
+
+
+    def naive_graph( self, parameters, inputs ) :
+
+        assert( parameters == [] )
+
+        dimensions = len( list( T.tensor.shape( inputs ) ) )
+        patch_dimensions = dimensions - 2
+        switch_labels_and_batch = [ 1, 0 ] + [ i + 2 for i in range( patch_dimensions ) ]
+
+        p = T.tensor.exp( inputs ).dimshuffle( switch_labels_and_batch )
+        z = T.tensor.sum( T.tensor.exp( inputs ), axis = 1 )
+        softmax = p / z
+        return softmax.dimshuffle( switch_labels_and_batch )
 
 
 #---------------------------------------------------------------------------------------------------
@@ -157,20 +196,27 @@ class ConvolutionalLayer( network.Layer ) :
         assert dimensions == 2 or dimensions == 3
 
         input_shape = T.tensor.shape( inputs )
-        extended_shape = ( input_shape[ 0 ], 1 ) + input_shape[ 1 : 1 + dimensions ]
+        input_feature_map_shape = list( input_shape[ 1 : 1 + dimensions ] )
+        batches_by_one_feature_map_grid = [ input_shape[ 0 ], 1 ]
+        extended_shape = batches_by_one_feature_map_grid + input_feature_map_shape
         shaped_inputs = ( T.tensor.reshape( inputs, extended_shape, 2 + dimensions )
                           if self.input_feature_maps == 1
                           else inputs )
 
         convolution = T.tensor.nnet.conv3d if dimensions == 3 else T.tensor.nnet.conv2d
-        convolved_inputs = convolution(
+        convolved = convolution(
             shaped_inputs,
             kernel,
             filter_shape = self.weights_shape,
             filter_dilation = ( self.stride, ) * dimensions,
             border_mode = 'valid' )
 
-        return self.activation.graph( convolved_inputs + biases )
+        feature_map_axis_to_end = [ 0 ] + [ 2 + i for i in range( dimensions ) ] + [ 1 ]
+        feature_map_axis_to_2nd = [ 0, dimensions + 1 ] + [ 1 + i for i in range( dimensions ) ]
+        shuffled_convolved = convolved.dimshuffle( feature_map_axis_to_end )
+        shuffled_convolved_with_bias = shuffled_convolved + biases
+        convolved_with_bias = shuffled_convolved_with_bias.dimshuffle( feature_map_axis_to_2nd )
+        return self.activation.graph( convolved_with_bias )
 
 
 
