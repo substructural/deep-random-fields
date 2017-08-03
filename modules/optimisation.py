@@ -129,7 +129,7 @@ class Parameters( object ):
 class Monitor( object ):
 
 
-    def on_batch( self, epoch, batch, predicted_distribution, reference_distribution, offsets ):
+    def on_batch( self, epoch, batch, predicted, reference, positions ):
         ''' 
         Event handler called on completion of a batch during training or validation. 
 
@@ -262,7 +262,7 @@ class Optimiser( object ) :
         costs = []
 
         for batch, ( images, distribution, positions ) in enumerate( data ):
-
+            
             predicted_distribution, cost = step( images, distribution )
 
             costs.append( cost )
@@ -284,7 +284,7 @@ class Optimiser( object ) :
             optimisation_monitor,
             validation_monitor ):
 
-        self.log.section( "optimising model" )
+        self.log.section( "constructing graph" )
         costs = []
 
         self.log.entry( "constructing validation graph" )
@@ -293,6 +293,7 @@ class Optimiser( object ) :
         self.log.entry( "constructing optimisation graph" )
         optimisation_step = self.optimisation_step( model )
 
+        self.log.section( "optimising model" )
         for epoch in range( self.parameters.maximum_epochs ):
 
             self.iterate(

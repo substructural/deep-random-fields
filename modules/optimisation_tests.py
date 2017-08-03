@@ -19,6 +19,8 @@ import network
 import optimisation
 import output
 
+import ipdb
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -364,7 +366,6 @@ class StochasticGradientDescentTests( unittest.TestCase ):
     def test_that_gradient_descent_converges_on_an_approximate_solution_for_a_simple_task( self ):
 
         model = network.Model( network.Architecture( [ Mock.LinearLayer( 0.5, 0.5 ) ], 1, 1 ) )
-
         parameters = optimisation.Parameters(
             weight_L1 = 1.0,
             weight_L2 = 1.0,
@@ -374,9 +375,10 @@ class StochasticGradientDescentTests( unittest.TestCase ):
             recent_cost_sample_size = 3,
             convergence_threshold = 0.00001 )
             
-        log = output.Log( sys.stdout )
+        log = output.Log()
         cost_function = Mock.MeanSquaredDifferenceCost( weight_L1 = 0.1, weight_L2 = 0.1 )
         learning_rate_schedule = learning_rates.RMSPropLearningRate( 0.01, 0.9 )
+
         optimiser = optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate_schedule, log )
         
