@@ -104,11 +104,14 @@ import operator
 import numpy
 import theano
 
-import pdb
+import ipdb
 
 FLOAT_X = theano.config.floatX 
 
+
+
 #---------------------------------------------------------------------------------------------------
+# primitive dense patch functions
 
 
 def dense_patch_indices_to_dense_patch_distribution( indices, index_count ) :
@@ -127,24 +130,26 @@ def dense_patch_indices_to_dense_patch_distribution( indices, index_count ) :
 
 
 
-def dense_patch_distribution_to_dense_volume_distribution( dense_patches, target_shape ) :
+def dense_patch_distribution_to_dense_volume_distribution( dense_patches, volume_shape, margin ):
 
     patch_count = dense_patches.shape[ 0 ]
-    patch_shape = dense_patches.shape[ 1 : -1 ]
+    patch_shape = numpy.array( dense_patches.shape[ 1 : -1 ] )
     index_count = dense_patches.shape[ -1 ]
     assert len( patch_shape ) == 3
 
-    voxel_count = patch_count * reduce( operator.mul, patch_shape )
-    expected_voxel_count = reduce( operator.mul, target_shape )
+    margin_loss = 2 * margin
+    reconstructed_shape = numpy.array( volume_shape ) - margin_loss
+    expected_voxel_count = numpy.prod( reconstructed_shape )
+    voxel_count = patch_count * numpy.prod( patch_shape )
     assert voxel_count == expected_voxel_count
 
-    grid_dimensions = numpy.array( target_shape ) // numpy.array( patch_shape )
+    grid_dimensions = reconstructed_shape // patch_shape
     grid_shape = tuple( int( grid_dimensions[ i ] ) for i in range( 0, len( grid_dimensions ) ) )
-    grid_of_patches_shape = grid_shape + patch_shape + ( index_count, )
+    grid_of_patches_shape = grid_shape + tuple( patch_shape ) + ( index_count, )
     grid_of_patches = dense_patches.reshape( grid_of_patches_shape )
 
     permutation = ( 0, 3, 1, 4, 2, 5, 6 )
-    dense_volume_shape = target_shape + ( index_count, )
+    dense_volume_shape = tuple( reconstructed_shape ) + ( index_count, )
     dense_volume = numpy.transpose( grid_of_patches, permutation ).reshape( dense_volume_shape )
 
     return dense_volume
@@ -161,7 +166,6 @@ def dense_volume_distribution_to_dense_volume_indices( dense_volume_distribution
 def dense_volume_indices_to_dense_volume_masks( dense_volume_indices, index_count ) :
 
     volume_shape = dense_volume_indices.shape
-    volume_dimensions = len( volume_shape )
 
     masked = numpy.zeros( ( index_count, ) + volume_shape ).astype( 'int8' )
     for i in range( 0, index_count ) :
@@ -172,6 +176,45 @@ def dense_volume_indices_to_dense_volume_masks( dense_volume_indices, index_coun
 
 
 #---------------------------------------------------------------------------------------------------
+# compound dense patch functions
+
+
+def dense_patch_distributions_to_dense_volume_indices(
+        dense_patch_distribution,
+        target_shape,
+        margin ):
+
+    assert len( dense_patch_distribution.shape ) == 5
+
+    dense_volume_distribution = dense_patch_distribution_to_dense_volume_distribution(
+        dense_patch_distribution,
+        target_shape,
+        margin )
+
+    return dense_volume_distribution_to_dense_volume_indices( dense_volume_distribution )
+
+
+
+def dense_patch_indices_to_cropped_dense_patch_distributions( label_count, margin ):
+
+    def distributions_for_patches( dense_patch_indices ):
+
+        outer = dense_patch_indices.shape
+        inner = tuple( slice( margin, span - margin ) for span in outer[1:] )
+        batch = slice( 0, outer[0] )
+        cropped = ( batch, ) + inner
+
+        selected_patch_indices = dense_patch_indices[cropped] if margin else dense_patch_indices
+        return dense_patch_indices_to_dense_patch_distribution(
+            selected_patch_indices,
+            label_count )
+
+    return distributions_for_patches
+
+
+
+#---------------------------------------------------------------------------------------------------
+# primitive sparse patch functions
 
 
 def dense_patch_distribution_to_sparse_patch_distribution( dense_patch_distribution ) :
@@ -205,64 +248,36 @@ def sparse_patch_distribution_to_dense_volume_distribution( sparse_patch_distrib
     return sparse_patch_distribution.reshape( dense_shape )
 
 
-#---------------------------------------------------------------------------------------------------
-
-class DenseLabelConversions( object ):
-
-
-    def __init__( self, label_count ):
-
-        self.__label_count = label_count
-
-
-    def distributions_for_patches( self, dense_patch_indices ):
-
-        return dense_patch_indices_to_dense_patch_distribution(
-            dense_patch_indices,
-            self.__label_count )
-
-
-    def labels_for_volumes( self, dense_patch_distribution, target_shape ):
-
-        assert len( dense_patch_distribution.shape ) == 5
-
-        dense_volume_distribution = dense_patch_distribution_to_dense_volume_distribution(
-            dense_patch_distribution,
-            target_shape )
-
-        return dense_volume_distribution_to_dense_volume_indices( dense_volume_distribution )
-
 
 #---------------------------------------------------------------------------------------------------
-
-class SparseLabelConversions( object ):
-
-
-    def __init__( self, label_count ):
-
-        self.__label_count = label_count
+# compound sparse patch functions
 
 
-    def distributions_for_patches( self, dense_patch_indices ):
+def sparse_patch_distribution_to_dense_volume_indices( sparse_patch_distribution, target_shape ):
+
+    patch_count = sparse_patch_distribution.shape[ 1 ]
+    assert patch_count == numpy.prod( target_shape )
+    assert len( target_shape ) == 3
+
+    dense_volume_distribution = sparse_patch_distribution_to_dense_volume_distribution(
+        sparse_patch_distribution,
+        target_shape )
+
+    return dense_volume_distribution_to_dense_volume_indices( dense_volume_distribution )
+
+
+
+def dense_patch_indices_to_sparse_patch_distributions( label_count ):
+
+    def distributions_for_patches( dense_patch_indices ):
 
         dense_distributions = dense_patch_indices_to_dense_patch_distribution(
             dense_patch_indices,
-            self.__label_count )
+            label_count )
 
         return dense_patch_distribution_to_sparse_patch_distribution( dense_distributions )
 
-
-    def labels_for_volumes( self, sparse_patch_distribution, patch_grid_shape ):
-
-        patch_count = sparse_patch_distribution.shape[ 1 ]
-        assert patch_count == numpy.prod( patch_grid_shape )
-        assert len( patch_grid_shape ) == 3
-
-        dense_volume_distribution = sparse_patch_distribution_to_dense_volume_distribution(
-            sparse_patch_distribution,
-            patch_grid_shape )
-
-        return dense_volume_distribution_to_dense_volume_indices( dense_volume_distribution )
+    return distributions_for_patches
 
 
 #---------------------------------------------------------------------------------------------------

@@ -130,8 +130,12 @@ class DenseLabelTests( unittest.TestCase ) :
 
         patches = TestData.disjoint_distribution_patches()
         volume_shape = TestData.index_volume().shape
-        computed_volume = labels.dense_patch_distribution_to_dense_volume_distribution( patches, volume_shape )
+        margin = 0
         expected_volume = TestData.distribution_volume()
+        computed_volume = labels.dense_patch_distribution_to_dense_volume_distribution(
+            patches,
+            volume_shape,
+            margin )
 
         self.assertTrue( numpy.array_equal( computed_volume, expected_volume ) )
 
@@ -180,18 +184,7 @@ class SparseLabelTests( unittest.TestCase ) :
             ( 3, 3, 3 ) )
         expected_volume = TestData.distribution_volume()[ 1:, 1:, 1:, : ].reshape( ( 3, 3, 3, 64 ) )
 
-        differences = computed_volume - expected_volume
-        print( 'computed:\n', computed_volume )
-        print( 'expected:\n', expected_volume )
-        print( 'different:\n', differences )
         self.assertTrue( numpy.array_equal( computed_volume, expected_volume ) )
-
-
-#---------------------------------------------------------------------------------------------------
-
-if __name__ == '__main__' :
-
-    unittest.main()
 
 
 #---------------------------------------------------------------------------------------------------
