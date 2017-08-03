@@ -61,7 +61,7 @@ class CategoricalCrossEntropyCost( CostFunction ):
     def __init__( self, distribution_axis, weight_L1 = 0.0, weight_L2 = 0.0 ):
 
         self.__distribution_axis = distribution_axis
-        super( CategoricalCrossEntropyCost, self ).__init__( self, weight_L1, weight_L2 )
+        super( CategoricalCrossEntropyCost, self ).__init__( weight_L1, weight_L2 )
 
 
     @property
