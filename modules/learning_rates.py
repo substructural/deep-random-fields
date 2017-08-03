@@ -8,6 +8,8 @@
 import theano
 import numpy
 
+FloatType = theano.config.floatX
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -74,12 +76,14 @@ class RMSPropLearningRate( LocalLearningRate ):
 
     def __call__( self, parameter, cost_gradient ):
 
-        shape = tuple( parameter.shape  )
         gamma = self.mean_weighting
-        eta = self.base_learning_rate * numpy.ones( shape ) 
+        eta = self.base_learning_rate
         epsilon = 0.0001
 
-        zero = numpy.zeros( shape )
+        initial_value = parameter.get_value()
+        is_tensor = isinstance( initial_value, numpy.ndarray ) and ( initial_value.shape != () )
+        zero = numpy.zeros( initial_value.shape ).astype( FloatType ) if is_tensor else 0.0
+
         mean_squared_gradient = theano.shared( name = 'mean_squared_gradient', value = zero )
         squared_gradient = ( gamma * mean_squared_gradient ) + ( 1 - gamma )*( cost_gradient ** 2 )
         rate = eta * theano.tensor.sqrt( squared_gradient + epsilon )
