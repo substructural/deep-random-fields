@@ -21,7 +21,7 @@ import matplotlib.pyplot
 import labels
 import output
 
-import pdb
+import ipdb
 
 
 #---------------------------------------------------------------------------------------------------
@@ -103,15 +103,11 @@ class SegmentationResults( object ):
             results_id,
             epoch,
             class_count,
-            label_conversion,
-            log = output.Log() ):
-
-        self.__log = log
+            log ):
 
         self.__epoch = epoch
         self.__archive = Archive( data_path, results_id, log )
 
-        self.__label_conversion = label_conversion
         self.__class_count = class_count
 
         self.__dice_scores = numpy.zeros(( 0, class_count ))
@@ -172,31 +168,27 @@ class SegmentationResults( object ):
         return numpy.mean( self.__confusion_matrices, axis = 0 )
     
 
-    def append_and_save(
-            self, volume_id, predicted_distribution, reference_distribution, target_shape ):
+    def append_and_save( self, volume_id, predicted_distribution, reference_distribution ):
 
-        self.append( predicted_distribution, reference_distribution, target_shape )
+        self.append( predicted_distribution, reference_distribution )
 
         self.archive.save_array_output( predicted_distribution, 'predicted', volume_id, self.epoch )
         self.archive.save_array_output( reference_distribution, 'reference', volume_id, self.epoch )
 
 
-    def append( self, predicted_distribution, reference_distribution, target_shape ):
+    def append( self, predicted_labels, reference_labels ):
 
-        distribution_to_labels = self.__label_conversion.labels_for_volumes
-        labels_to_masks = labels.dense_volume_indices_to_dense_volume_masks
-
-        predicted_labels = distribution_to_labels( predicted_distribution, target_shape )
-        reference_labels = distribution_to_labels( reference_distribution, target_shape )
         self.__predicted_labels.append( Images.sample_images( predicted_labels ) )
         self.__reference_labels.append( Images.sample_images( reference_labels ) )
 
+        labels_to_masks = labels.dense_volume_indices_to_dense_volume_masks
         predicted_masks = labels_to_masks( predicted_labels, self.__class_count )
         reference_masks = labels_to_masks( reference_labels, self.__class_count )
         self.__predicted_masks.append( Images.sample_images( predicted_masks ) )
         self.__reference_masks.append( Images.sample_images( reference_masks ) )
 
-        dice_scores = Metrics.mean_dice_score_per_class( predicted_masks, reference_masks ) 
+        dice_scores = Metrics.dice_scores_per_class(
+            predicted_masks, reference_masks, self.__class_count )
         self.__dice_scores = numpy.append( self.__dice_scores, [dice_scores], axis = 0 )
 
         confusion_matrix = Metrics.confusion_matrix( predicted_masks, reference_masks )
@@ -220,15 +212,29 @@ class Metrics:
 
 
     @staticmethod
+    def dice_scores_per_class( predicted_masks, reference_masks, class_count ):
+
+        dice_scores = [
+            Metrics.dice_score( predicted_masks[c], reference_masks[c] )
+            for c in range( class_count ) ] 
+        return dice_scores
+
+
+    @staticmethod
     def mean_dice_score_per_class( predicted_masks_per_volume, reference_masks_per_volume ):
+
         volumes = predicted_masks_per_volume.shape[ 0 ]
         classes = predicted_masks_per_volume.shape[ 1 ]
         dice = lambda v, c : Metrics.dice_score( predicted_masks_per_volume[ v, c ],
                                                  reference_masks_per_volume[ v, c ] )
 
-        return [
-            ( 1 / volumes ) * sum( [ dice( v, c ) for v in range( 0, volumes ) ] )
-            for c in range( 0, classes ) ]
+        dice_per_volume_per_class = numpy.array(
+            [ [ dice( v, c ) 
+                for c in range( 0, classes ) ]
+              for v in range( 0, volumes ) ] )
+
+        sum_per_class = numpy.sum( dice_per_volume_per_class, axis = 0 ) 
+        return sum_per_class * ( 1.0 / volumes )
 
 
     @staticmethod
@@ -256,7 +262,11 @@ class Images:
 
         positions = ( 0.25, 0.5, 0.75 )
         shape = numpy.array( volume.shape )
-        offsets = [ [ shape[i] * positions[j] for j in range(3) ] for i in range(3) ]
+        offsets = numpy.array(
+            [ [ int( shape[i] * positions[j] )
+                for j in range(3) ]
+              for i in range(3)
+            ] )
         samples = [
             [ volume[ offsets[0, j], :, : ] for j in range(3) ],
             [ volume[ :, offsets[1, j], : ] for j in range(3) ],
@@ -314,7 +324,7 @@ class Images:
         axes.set_axis_off()
 
         figure.savefig( file_path, bbox_inches = 'tight', pad_inches = 0.0, transparent = True )
-        
+
 
 
 #---------------------------------------------------------------------------------------------------
