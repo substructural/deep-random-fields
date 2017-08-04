@@ -187,7 +187,6 @@ class Dataset( object ) :
 
         assert( len( aquisitions ) >= training_count + validation_count + testing_count )
         log = maybe_log if maybe_log else output.Log()
-        log.subsection( "partitioning dataset" )
 
         log.entry( "sorting by subject" )
         subjects = [ s for s in set( [ a.subject.subject_id for a in aquisitions ] ) ]
