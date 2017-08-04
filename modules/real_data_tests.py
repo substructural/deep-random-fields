@@ -7,20 +7,85 @@
 
 import os
 import sys
-import tempfile
 import unittest
 
-import numpy
-
 import activation
-import data
-import experiment
-import labels
+import costs
+import experiments
 import layers
+import learning_rates
 import network
 import oasis
 import optimisation
 import output
+import sample
+
+import numpy.random
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class RealDataExperiment( experiments.ExperimentDefinition ):
+
+
+    @property
+    def experiment_id( self ):
+
+        return 'real_data_experiment'
+
+
+    @property
+    def label_count( self ):
+
+        return 4
+
+
+    def dataset( self, input_path, log ):
+
+        return oasis.OasisDataSet( input_path, 8, 1, 1, 42, maybe_log = log )
+
+
+    @property
+    def sample_parameters( self ):
+
+        return ( sample.Parameters()
+                 .with_volume_count( 1 )
+                 .with_window_margin( 5 )
+                 .with_target_shape(( 110, 110, 110 ))
+                 .with_patch_shape(( 20, 20, 20 ))
+                 .with_patch_count( 100 )
+                 .with_patch_stride( 10 ) )
+
+
+    def model( self ):
+
+        leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
+        architecture = network.Architecture(
+            [ layers.ConvolutionalLayer( 1, 8, ( 3, 3, 3 ), 1, leaky_relu ),
+              layers.ConvolutionalLayer( 8, 8, ( 3, 3, 3 ), 1, leaky_relu ),
+              layers.ConvolutionalLayer( 8, 8, ( 3, 3, 3 ), 1, leaky_relu ),
+              layers.ConvolutionalLayer( 8, 8, ( 3, 3, 3 ), 1, leaky_relu ),
+              layers.ConvolutionalLayer( 8, 4, ( 3, 3, 3 ), 1, leaky_relu ),
+              layers.Softmax(),
+              layers.ScalarFeatureMapsProbabilityDistribution()
+            ],
+            input_dimensions = 4,
+            output_dimensions = 5 )
+
+        return network.Model( architecture, seed = 42 )
+
+
+    def optimiser( self, log ):
+
+        distribution_axis = 1
+        cost_function = costs.CategoricalCrossEntropyCost( distribution_axis, 0.1, 0.1 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.001, 0.9 )
+        parameters = optimisation.Parameters( weight_L1 = 0.1, weight_L2 = 0.1 )
+        return optimisation.StochasticGradientDescent(
+            parameters, cost_function, learning_rate, log )
+
+    
 
 
 #---------------------------------------------------------------------------------------------------
@@ -28,50 +93,20 @@ import output
 class RealDataTests( unittest.TestCase ):
 
 
+
     @staticmethod
     def train_simple_cnn_on_oasis( input_path, output_path ):
 
         log = output.Log( sys.stdout )
-        log.section( "initialising inputs" )
+        definition = RealDataExperiment()
+        experiment = experiments.SegmentationByDenseInferenceExperiment(
+            definition,
+            input_path,
+            output_path,
+            log )
 
-        log.subsection( "model construction" )
-
-        log.entry( "building architecture" )
-        leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
-        architecture = network.Architecture(
-            [ layers.ConvolutionalLayer( 1, 8, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.PoolingLayer( layers.PoolingType.MAX,  ( 2, 2, 2 ) ),
-              layers.ConvolutionalLayer( 8, 8, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.PoolingLayer( layers.PoolingType.MAX,  ( 2, 2, 2 ) ),
-              layers.ConvolutionalLayer( 8, 8, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.PoolingLayer( layers.PoolingType.MAX,  ( 2, 2, 2 ) ),
-              layers.DenseLayer( 8, 3, leaky_relu ),
-              layers.Softmax() ],
-            input_dimensions = 4,
-            output_dimensions = 2 )
-
-        log.entry( "building optimiser pipeline" )
-        distribution_axis = 1
-        cost_function = optimisation.CategoricalCrossEntropyCost( distribution_axis, 0.1, 0.1 )
-        optimiser = optimisation.SimpleGradientDescentOptimiser( 0.1 )
-
-        log.entry( "building model" )
-        model = network.Model( architecture, cost_function, optimiser )
-
-        label_conversion = labels.SparseLabelConversions( 4 )
-        batch_parameters = data.Parameters( 1, ( 22, 22, 22 ), 1 )
-        oasis_dataset = oasis.OasisDataSet( input_path, 8, 1, 1, 42, maybe_log = log )
-
-        experiment_parameters = experiment.Parameters( "real-data-test", output_path, 2, 0.0001, 4 )
-        test_run = experiment.Experiment(
-            model,
-            label_conversion,
-            oasis_dataset,
-            batch_parameters,
-            experiment_parameters,
-            log = log)
-
-        return test_run.run() 
+        random_generator = numpy.random.RandomState( seed = 54 )
+        return experiment.run( random_generator ) 
     
 
     def test_complete_experiment_stack( self ):
