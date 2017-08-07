@@ -26,6 +26,7 @@ import labels
 import optimisation
 import output
 import results
+import report
 import sample
 
 
@@ -178,6 +179,15 @@ class SegmentationExperiment( object ):
 
 
     @property
+    def reconstructed_shape( self ):
+
+        parameters = self.definition.sample_parameters
+        target_shape = numpy.array( parameters.target_shape )
+        margin_loss = numpy.array( parameters.window_margin ) * 2
+        return target_shape - margin_loss
+
+
+    @property
     def input_path( self ):
 
         return self.__input_path
@@ -214,7 +224,13 @@ class SegmentationExperiment( object ):
             optimisation.Monitor(),
             validation_results_monitor )
 
-        self.log.entry( "complete" )
+        self.log.entry( "optimisation complete" )
+
+        self.log.subsection( "constructing report" )
+        experiment_results = validation_results_monitor.results_for_most_recent_epoch
+        report.Report.write( experiment_results, dataset, self.reconstructed_shape )
+        self.log.entry( "report complete" )
+
         return validation_results_monitor.results_for_most_recent_epoch
 
 
@@ -292,7 +308,7 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
         accumulator_shape = ( 0, ) + tuple( output_patch_shape ) + ( class_count, )
         self.__predicted = numpy.zeros(( accumulator_shape ))
         self.__reference = numpy.zeros(( accumulator_shape ))
-        self.__positions = numpy.zeros(( 0, 4 ))
+        self.__positions = numpy.zeros(( 0, 4 )).astype( 'int64' )
 
         self.__results = None
     
@@ -316,8 +332,13 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
     def results_for_epoch( self, epoch ):
 
-        if not self.__results or self.__results.epoch != epoch:
-            print( 'constructing results store for epoch ', epoch )
+        if self.__results and self.__results.epoch != epoch:
+            
+            self.__results.delete_from_archive()
+            self.__results = None
+            
+
+        if not self.__results:
             self.__results = results.SegmentationResults(
                 self.__data_path,
                 self.__results_id,
@@ -342,12 +363,6 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
         results_for_epoch = self.results_for_epoch( epoch )
 
-        print( 'self.__positions:', self.__positions.shape )
-        print( 'self.__predicted:', self.__predicted.shape )
-        print( 'self.__reference:', self.__reference.shape )
-        print( 'batch positions: ', positions.shape )
-        print( 'batch predicted: ', predicted.shape )
-        print( 'batch reference: ', reference.shape )
         self.__positions = numpy.concatenate(( self.__positions, positions ))
         self.__predicted = numpy.concatenate(( self.__predicted, predicted ))
         self.__reference = numpy.concatenate(( self.__reference, reference ))
@@ -363,16 +378,19 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             for i in range( completed_count ):
                 m = patch_count_per_volume * i
                 n = patch_count_per_volume * ( i + 1 )
-                offset = numpy.min( self.__positions[ m : n ], axis = 0 )
+                offset = self.__positions[ m, 1: ]
                 volume_id = self.__positions[ m ][ 0 ]
+                self.__log.entry( f'completed volume {volume_id} ({self.__positions[m]}) (offset = {offset})' )
                 results_for_epoch.append_and_save(
                     volume_id,
                     self.reconstructed_volume( self.__predicted[ m : n ] ),
                     self.reconstructed_volume( self.__reference[ m : n ] ),
                     offset )
             
-            self.__predicted = numpy.delete( self.__predicted, completed_count, 0 )
-            self.__reference = numpy.delete( self.__reference, completed_count, 0 )
+            block = numpy.s_[ 0 : completed_count * patch_count_per_volume ]
+            self.__positions = numpy.delete( self.__positions, block, 0 )
+            self.__predicted = numpy.delete( self.__predicted, block, 0 )
+            self.__reference = numpy.delete( self.__reference, block, 0 )
 
 
     def on_epoch( self, epoch, mean_cost, model ):
