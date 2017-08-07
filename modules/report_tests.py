@@ -67,9 +67,9 @@ class MockVolume( object ):
 
     def __init__( self, bounds, offset, outer_span ):
 
-        image, labels = MockVolume.define( bounds, offset, outer_span )
-        self.image_data = image
-        self.label_data = labels
+        images, labels = MockVolume.define( bounds, offset, outer_span )
+        self.images = images
+        self.labels = labels
 
 
 class MockAquisition( object ):

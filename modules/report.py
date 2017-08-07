@@ -11,6 +11,8 @@ import os.path
 import labels
 from results import Images
 
+import ipdb
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -201,14 +203,14 @@ class SourceData( object ):
     @staticmethod
     def image_data_from_volumes( volumes, offsets, target_shape ):
 
-        return { i : Images.extract( volumes[ i ].image_data, offsets[ i ], target_shape )
+        return { i : Images.extract( volumes[ i ].images, offsets[ i ], target_shape )
                  for i in volumes }
 
 
     @staticmethod
     def reference_labels_from_volumes( volumes, offsets, target_shape ):
 
-        return { i : Images.extract( volumes[ i ].label_data, offsets[ i ], target_shape )
+        return { i : Images.extract( volumes[ i ].labels, offsets[ i ], target_shape )
                  for i in volumes }
 
 
