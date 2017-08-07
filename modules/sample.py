@@ -243,7 +243,7 @@ class PatchSet( object ):
         patch_offsets = numpy.array(
             [ ( v + volume_offset, z, y, x )
               for v, offsets in enumerate( patch_offsets_per_volume )
-              for z, y, x in offsets ] )
+              for z, y, x in offsets ] ).astype( 'int64' )
         self.__patch_offsets = patch_offsets
 
         log.item( "extracting image patches" )
