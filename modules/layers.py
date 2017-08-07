@@ -6,6 +6,7 @@ import enum
 
 import numpy as N
 import theano as T
+import theano.printing
 
 import network
 
@@ -47,10 +48,16 @@ class Softmax( network.Layer ) :
         patch_dimensions = dimensions - 2
         switch_labels_and_batch = [ 1, 0 ] + [ i + 2 for i in range( patch_dimensions ) ]
 
+        log = T.tensor.log
+        exp = T.tensor.exp
+        max = T.tensor.max
+        sum = T.tensor.sum
+
         p = inputs.dimshuffle( switch_labels_and_batch )
-        z = T.tensor.sum( inputs, axis = 1 )
-        softmax = T.tensor.exp( p - z )
-        return softmax.dimshuffle( switch_labels_and_batch )
+        m = max( p, axis = 0 )
+        s = exp( p - m - log( sum( exp( p - m ), axis = 0 ) ) )
+
+        return s.dimshuffle( switch_labels_and_batch )
 
 
 #---------------------------------------------------------------------------------------------------
