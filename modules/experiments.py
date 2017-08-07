@@ -380,7 +380,6 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
                 n = patch_count_per_volume * ( i + 1 )
                 offset = self.__positions[ m, 1: ]
                 volume_id = self.__positions[ m ][ 0 ]
-                self.__log.entry( f'completed volume {volume_id} ({self.__positions[m]}) (offset = {offset})' )
                 results_for_epoch.append_and_save(
                     volume_id,
                     self.reconstructed_volume( self.__predicted[ m : n ] ),

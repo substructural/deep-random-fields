@@ -53,20 +53,6 @@ class Softmax( network.Layer ) :
         return softmax.dimshuffle( switch_labels_and_batch )
 
 
-    def naive_graph( self, parameters, inputs ) :
-
-        assert( parameters == [] )
-
-        dimensions = len( list( T.tensor.shape( inputs ) ) )
-        patch_dimensions = dimensions - 2
-        switch_labels_and_batch = [ 1, 0 ] + [ i + 2 for i in range( patch_dimensions ) ]
-
-        p = T.tensor.exp( inputs ).dimshuffle( switch_labels_and_batch )
-        z = T.tensor.sum( T.tensor.exp( inputs ), axis = 1 )
-        softmax = p / z
-        return softmax.dimshuffle( switch_labels_and_batch )
-
-
 #---------------------------------------------------------------------------------------------------
 
 class DenseLayer( network.Layer ) :
@@ -179,7 +165,10 @@ class ConvolutionalLayer( network.Layer ) :
 
     def initial_parameter_values( self ) :
 
-        initial_kernel = N.random.standard_normal( self.weights_shape ).astype( T.config.floatX )
+        w = self.weights_shape 
+        m = N.prod( w )
+        u = N.sqrt( 1.0 / m )
+        initial_kernel = N.random.uniform( -u, +u, w ).astype( T.config.floatX )
         initial_biases = N.zeros( self.output_feature_maps ).astype( T.config.floatX )
 
         return [ ( 'K', initial_kernel ), ( 'b', initial_biases ) ]
