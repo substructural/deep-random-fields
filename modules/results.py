@@ -72,7 +72,7 @@ class Archive( object ):
         if not os.path.exists( self.data_path ):
             os.mkdir( self.data_path )
 
-        filepath = self.saved_object_file_name( object_type, object_id, epoch )
+        filepath = self.saved_object_file_name( object_type, object_id, epoch ) + '.npz'
         if isinstance( data, dict ):
             numpy.savez_compressed( filepath, **data )
         else:
@@ -84,11 +84,11 @@ class Archive( object ):
 
     def read_array_output( self, object_type, object_id = None, epoch = None ):
 
-        filepath = self.saved_object_file_name( object_type, object_id, epoch )
-        numpy.load( filepath, allow_pickle=False )
+        filepath = self.saved_object_file_name( object_type, object_id, epoch ) + '.npz'
+        array = numpy.load( filepath, allow_pickle=False )
 
         self.log.item( "read " + object_type + " from " + filepath )
-        return filepath
+        return array
 
 
     def save_model_parameters( self, parameter_map, object_id = None, epoch = None ):
