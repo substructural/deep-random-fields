@@ -34,26 +34,26 @@ def in_bounds( point, bounds ):
     return True
 
 
-def mask( outer, inner_0, inner_n, value_in_mask = 1 ):
+def mask( outer, minimum, maximum, value_in_mask = 1 ):
 
     dimensions = len( outer )
-    bounds = cuboid( inner_0, inner_n )
+    mask = N.zeros( tuple( outer ) ).astype( 'int64' )
 
     if dimensions == 2:
-        return N.array(
-            [ [ ( value_in_mask if in_bounds( (y, x), bounds ) else 0 )
-                for x in range( outer[ 1 ] ) ]
-              for y in range( outer[ 0 ] ) ] )
+        mask[ minimum[ 0 ] : maximum[ 0 ] + 1,
+              minimum[ 1 ] : maximum[ 1 ] + 1 ] = value_in_mask
+
+        return mask
 
     if dimensions == 3:
-        return N.array(
-            [ [ [ ( value_in_mask if in_bounds( (z, y, x), bounds ) else 0 )
-                  for x in range( outer[ 2 ] ) ]
-                for y in range( outer[ 1 ] ) ] 
-              for z in range( outer[ 0 ] ) ] )
+        mask[ minimum[ 0 ] : maximum[ 0 ] + 1,
+              minimum[ 1 ] : maximum[ 1 ] + 1,
+              minimum[ 2 ] : maximum[ 2 ] + 1 ] = value_in_mask
+
+        return mask
 
     else:
         raise Exception( f'only 2D and 3D masks are supported (dimensions = {dimensions})' )
-
+ 
 
 #---------------------------------------------------------------------------------------------------
