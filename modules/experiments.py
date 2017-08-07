@@ -237,7 +237,7 @@ class SegmentationByPerVoxelClassificationExperiment( SegmentationExperiment ):
     def label_conversion_for_results( self ):
 
         assert self.definition.sample_parameters.patch_stride == 1
-        return labels.sparse_patch_distribution_to_dense_volume_indices
+        return labels.sparse_patch_distribution_to_dense_volume_distribution
     
 
 
@@ -261,7 +261,7 @@ class SegmentationByDenseInferenceExperiment( SegmentationExperiment ):
     @property
     def label_conversion_for_results( self ):
 
-        return labels.dense_patch_distributions_to_dense_volume_indices
+        return labels.dense_patch_distribution_to_dense_volume_distribution
 
 
 
@@ -363,11 +363,13 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             for i in range( completed_count ):
                 m = patch_count_per_volume * i
                 n = patch_count_per_volume * ( i + 1 )
+                offset = numpy.min( self.__positions[ m : n ], axis = 0 )
                 volume_id = self.__positions[ m ][ 0 ]
                 results_for_epoch.append_and_save(
                     volume_id,
                     self.reconstructed_volume( self.__predicted[ m : n ] ),
-                    self.reconstructed_volume( self.__reference[ m : n ] ) )
+                    self.reconstructed_volume( self.__reference[ m : n ] ),
+                    offset )
             
             self.__predicted = numpy.delete( self.__predicted, completed_count, 0 )
             self.__reference = numpy.delete( self.__reference, completed_count, 0 )

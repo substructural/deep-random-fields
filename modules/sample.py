@@ -191,6 +191,12 @@ class PatchSet( object ):
 
 
     @staticmethod
+    def target_region_offset_from_patch_offsets( offsets_per_volume ):
+
+        return [ numpy.min( offsets, axis = 0 ) for offsets in offsets_per_volume ]
+
+
+    @staticmethod
     def offsets_in_volume( bounds, patch_shape, patch_stride ) :
 
         assert len( patch_shape ) == 3

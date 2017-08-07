@@ -12,6 +12,8 @@
 #---------------------------------------------------------------------------------------------------
 
 import os
+import enum
+import collections
 
 import numpy
 from numpy import logical_not as negation
@@ -71,9 +73,21 @@ class Archive( object ):
             os.mkdir( self.data_path )
 
         filepath = self.saved_object_file_name( object_type, object_id, epoch )
-        numpy.save( filepath, data, allow_pickle=False )
+        if isinstance( data, dict ):
+            numpy.savez_compressed( filepath, **data )
+        else:
+            numpy.savez( filepath, data, allow_pickle=False )
 
         self.log.item( "saved " + object_type + " to " + filepath )
+        return filepath
+
+
+    def read_array_output( self, object_type, object_id = None, epoch = None ):
+
+        filepath = self.saved_object_file_name( object_type, object_id, epoch )
+        numpy.load( filepath, allow_pickle=False )
+
+        self.log.item( "read " + object_type + " from " + filepath )
         return filepath
 
 
@@ -94,6 +108,9 @@ class Archive( object ):
 #---------------------------------------------------------------------------------------------------
 
 
+Statistics = collections.namedtuple( 'Statistics', [ 'mean', 'median', 'minimum', 'maximum' ] )
+
+
 class SegmentationResults( object ):
 
 
@@ -103,10 +120,12 @@ class SegmentationResults( object ):
             results_id,
             epoch,
             class_count,
-            log ):
+            log = output.Log() ):
 
         self.__epoch = epoch
+        self.__results_id = results_id
         self.__archive = Archive( data_path, results_id, log )
+        self.__files = []
 
         self.__class_count = class_count
 
@@ -118,6 +137,28 @@ class SegmentationResults( object ):
 
         self.__reference_labels = []
         self.__reference_masks = []
+
+
+    def delete_from_archive( self ):
+
+        for f in self.__files:
+            os.remove( f )
+
+        self.__files = []
+
+
+    def predicted_distribution( self, volume_id ):
+
+        with self.archive.read_array_output( 'segmentation', volume_id, self.epoch ) as data:
+            predicted = data[ 'predicted' ]
+            offset = data[ 'offset' ]
+            return predicted, offset
+
+
+    @property
+    def results_id( self ):
+
+        return self.__results_id
 
 
     @property
@@ -133,59 +174,61 @@ class SegmentationResults( object ):
 
 
     @property
-    def predicted_label_samples( self ):
+    def class_count( self ):
 
-        return self.__predicted_labels
-
-
-    @property
-    def reference_label_samples( self ):
-
-        return self.__reference_labels
+        return self.__class_count
 
 
     @property
-    def predicted_mask_samples( self ):
+    def confusion_matrices( self ):
 
-        return self.__predicted_masks
-
-
-    @property
-    def reference_mask_samples( self ):
-
-        return self.__reference_masks
+        return self.__confusion_matrices
 
 
     @property
-    def mean_dice_score_per_class( self ):
+    def dice_scores_per_class( self ):
 
-        return numpy.mean( self.__dice_scores, axis = 1 )
+        return self.__dice_scores
 
 
     @property
-    def mean_confusion( self ):
+    def statistics_for_mean_dice_score_per_volume( self ):
 
-        return numpy.mean( self.__confusion_matrices, axis = 0 )
+        mean_dice_scores_per_volume = numpy.mean( self.dice_scores_per_class, axis=1 )
+        return Metrics.all_statistic_values_and_indices( mean_dice_scores_per_volume )
+
+
+    def statistics_for_dice_score_for_class( self, class_index ):
+
+        dice_scores_for_class = self.dice_scores_per_class[ :, class_index ]
+        return Metrics.all_statistic_values_and_indices( dice_scores_for_class )
     
 
-    def append_and_save( self, volume_id, predicted_distribution, reference_distribution ):
+    def append_and_save(
+            self,
+            volume_id,
+            predicted_distribution,
+            reference_distribution,
+            offset_in_input ):
 
         self.append( predicted_distribution, reference_distribution )
 
-        self.archive.save_array_output( predicted_distribution, 'predicted', volume_id, self.epoch )
-        self.archive.save_array_output( reference_distribution, 'reference', volume_id, self.epoch )
+        # we do not save the reference as it assumed to exist already as part of the dataset
+        data = {
+            'predicted' : predicted_distribution,
+            'offset'    : offset_in_input }
+        self.archive.save_array_output( data, 'segmentation', volume_id, self.epoch )
 
 
-    def append( self, predicted_labels, reference_labels ):
+    def append( self, predicted_distribution, reference_distribution ):
 
-        self.__predicted_labels.append( Images.sample_images( predicted_labels ) )
-        self.__reference_labels.append( Images.sample_images( reference_labels ) )
-
+        distribution_to_labels = labels.dense_volume_distribution_to_dense_volume_indices
+        predicted_labels = distribution_to_labels( predicted_distribution )
+        reference_labels = distribution_to_labels( reference_distribution )
+        
         labels_to_masks = labels.dense_volume_indices_to_dense_volume_masks
         predicted_masks = labels_to_masks( predicted_labels, self.__class_count )
         reference_masks = labels_to_masks( reference_labels, self.__class_count )
-        self.__predicted_masks.append( Images.sample_images( predicted_masks ) )
-        self.__reference_masks.append( Images.sample_images( reference_masks ) )
 
         dice_scores = Metrics.dice_scores_per_class(
             predicted_masks, reference_masks, self.__class_count )
@@ -202,13 +245,34 @@ class Metrics:
 
 
     @staticmethod
+    def statistic_value_and_closest_index( values, statistic ):
+
+        value = statistic( values )
+        index = numpy.argmin( numpy.abs( values - value ) )
+        return value, index
+
+
+    @staticmethod
+    def all_statistic_values_and_indices( values ):
+
+        return Statistics(
+            Metrics.statistic_value_and_closest_index( values, numpy.mean ),
+            Metrics.statistic_value_and_closest_index( values, numpy.median ),
+            Metrics.statistic_value_and_closest_index( values, numpy.min ),
+            Metrics.statistic_value_and_closest_index( values, numpy.max ) )
+
+
+    @staticmethod
     def dice_score( predicted, reference ):
 
         intersection_size = numpy.count_nonzero( predicted & reference )
         predicted_size = numpy.count_nonzero( predicted )
         reference_size = numpy.count_nonzero( reference )
 
-        return ( 2.0 * intersection_size ) / ( predicted_size + reference_size )
+        if predicted_size + reference_size > 0:
+            return ( 2.0 * intersection_size ) / ( predicted_size + reference_size )
+        else:
+            return 0.0
 
 
     @staticmethod
@@ -252,9 +316,49 @@ class Metrics:
               for j in range( classes ) ] )
 
 
+    @staticmethod
+    def multiclass_to_binary_confusion_matrix_for_class( c, multiclass_confusion ):
+
+        tp = multiclass_confusion[ c, c ]
+        fp = numpy.sum( multiclass_confusion[ :, c ] ) - tp
+        fn = numpy.sum( multiclass_confusion[ c, : ] ) - tp
+        tn = numpy.sum( multiclass_confusion ) - ( tp + fp + fn )
+
+        return numpy.array(
+            [ [ tp, fn ],
+              [ fp, tn ] ] )
+
+
+    @staticmethod
+    def multiclass_to_binary_confusion_matrix( multiclass_confusion ):
+
+        binary_confusion = Metrics.multiclass_to_binary_confusion_matrix_for_class
+        classes = len( multiclass_confusion )
+        return numpy.array(
+            [ binary_confusion( c, multiclass_confusion ) for c in classes ] )
+
+
+
 #---------------------------------------------------------------------------------------------------
 
 class Images:
+
+
+    Samples = collections.namedtuple( 'SampleImages', [ 'mean', 'median', 'minimum', 'maximum' ] )
+
+
+    class Axes( enum.Enum ):
+
+        axial    = 0
+        coronal  = 1
+        sagittal = 2
+
+
+    class SamplePositions( enum.Enum ):
+
+        proximal = 0
+        medial   = 1
+        distal   = 2
 
 
     @staticmethod
@@ -262,16 +366,61 @@ class Images:
 
         positions = ( 0.25, 0.5, 0.75 )
         shape = numpy.array( volume.shape )
+
         offsets = numpy.array(
             [ [ int( shape[i] * positions[j] )
                 for j in range(3) ]
               for i in range(3)
             ] )
-        samples = [
+
+        samples = numpy.array([
             [ volume[ offsets[0, j], :, : ] for j in range(3) ],
             [ volume[ :, offsets[1, j], : ] for j in range(3) ],
-            [ volume[ :, :, offsets[2, j] ] for j in range(3) ]]
+            [ volume[ :, :, offsets[2, j] ] for j in range(3) ]])
+
         return samples
+
+
+    @staticmethod
+    def sample_difference_of_masks(
+            image_data,
+            predicted_label_volume,
+            reference_label_volume,
+            class_count,
+            class_index ):
+
+        labels_to_masks = labels.dense_volume_indices_to_dense_volume_masks
+        predicted_mask = labels_to_masks( predicted_label_volume, class_count )[ class_index ]
+        reference_mask = labels_to_masks( reference_label_volume, class_count )[ class_index ]
+        
+        difference = Images.difference_of_masks( predicted_mask, reference_mask )
+        overlay = Images.overlay( image_data, difference )
+        return Images.sample_images( overlay )
+
+
+    @staticmethod
+    def sample_difference_of_multiple_masks(
+            image_data,
+            predicted_label_volume,
+            reference_label_volume,
+            class_count ):
+
+        labels_to_masks = labels.dense_volume_indices_to_dense_volume_masks
+        predicted_masks = labels_to_masks( predicted_label_volume, class_count )
+        reference_masks = labels_to_masks( reference_label_volume, class_count )
+        
+        difference = Images.difference_of_multiple_masks( predicted_masks, reference_masks )
+        overlay = Images.overlay( image_data, difference )
+        return Images.sample_images( overlay )
+
+
+    @staticmethod
+    def extract( data, offset, target_shape ):
+
+        return data[
+            offset[ 0 ] : offset[ 0 ] + target_shape[ 0 ],
+            offset[ 1 ] : offset[ 1 ] + target_shape[ 1 ],
+            offset[ 2 ] : offset[ 2 ] + target_shape[ 2 ] ]
 
 
     @staticmethod
@@ -292,6 +441,37 @@ class Images:
         if include_true_negatives:
             true_negatives = negation( predicted | reference )
             difference_map[ :, true_negatives ] = 0xFF
+
+        permutation_to_rgb_values = list( range( 1, len( difference_shape ) ) ) + [ 0 ]
+        return numpy.transpose( difference_map, permutation_to_rgb_values )
+
+
+    @staticmethod
+    def difference_of_multiple_masks( predicted_masks, reference_masks ):
+
+        class_count = predicted_masks.shape[ 0 ]
+        difference_shape = ( 3, ) + predicted_masks.shape[ 1: ]
+        difference_map = numpy.zeros( difference_shape ).astype( 'uint8' )
+
+        for c in range( class_count ):
+            true_positives  = ( predicted_masks[ c ] & reference_masks[ c ] ) == 1
+            false_positives = ( predicted_masks[ c ] & negation( reference_masks[ c ] ) ) == 1
+
+            negatives = negation( predicted_masks )
+            tpc = numpy.count_nonzero( true_positives )
+            fpc = numpy.count_nonzero( false_positives )
+            nec = numpy.count_nonzero( negatives )
+
+            if c < 3:
+                difference_map[ c ][ true_positives  ] = 0xFF
+                difference_map[ c ][ false_positives ] = 0x80
+            else:
+                rgb = ( c + 0 ) % 3
+                mix = ( c + 1 ) % 3
+                difference_map[ rgb ][ true_positives  ] = 0xFF
+                difference_map[ mix ][ true_positives  ] = 0xFF
+                difference_map[ rgb ][ false_positives ] = 0x80
+                difference_map[ mix ][ false_positives ] = 0x80
 
         permutation_to_rgb_values = list( range( 1, len( difference_shape ) ) ) + [ 0 ]
         return numpy.transpose( difference_map, permutation_to_rgb_values )
@@ -324,6 +504,8 @@ class Images:
         axes.set_axis_off()
 
         figure.savefig( file_path, bbox_inches = 'tight', pad_inches = 0.0, transparent = True )
+        figure.clear()
+        matplotlib.pyplot.close()
 
 
 
