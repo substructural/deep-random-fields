@@ -282,7 +282,7 @@ class Optimiser( object ) :
         monitor.on_epoch( epoch, mean_cost, model )
         epoch_duration = ( datetime.now() - epoch_start ).total_seconds()
 
-        self.log.entry( f"step_name epoch {epoch}" )
+        self.log.entry( f"{step_name} epoch {epoch}" )
         self.log.item( f"time: {epoch_duration}" )
         self.log.item( f"cost: {mean_cost}" )
 
