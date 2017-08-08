@@ -194,7 +194,7 @@ class Dataset( object ) :
         aquisitions_by_subject = { s : aquisitions_for( s ) for s in subjects }
 
         subsets = [ [], [], [] ]
-        targets = [ training_count, validation_count, testing_count ]
+        targets = [ testing_count, validation_count, training_count ]
 
         log.entry( "allocating subjects to training, validation and test" )
         random.seed( random_seed )
@@ -209,9 +209,9 @@ class Dataset( object ) :
                     break
 
         log.entry( "randomising order" )
-        self.__training_set = random.sample( subsets[ 0 ], len( subsets[ 0 ] ) )
+        self.__testing_set = random.sample( subsets[ 0 ], len( subsets[ 0 ] ) )
         self.__validation_set = random.sample( subsets[ 1 ], len( subsets[ 1 ] ) )
-        self.__testing_set = random.sample( subsets[ 2 ], len( subsets[ 2 ] ) )
+        self.__training_set = random.sample( subsets[ 2 ], len( subsets[ 2 ] ) )
 
 
     @property
