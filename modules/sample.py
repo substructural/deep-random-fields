@@ -256,26 +256,20 @@ class PatchSet( object ):
             patch_shape,
             log = output.Log() ) :
 
-        log.entry( "constructing batch" )
-
-        log.item( "updating patch offsets" )
         patch_offsets = numpy.array(
             [ ( v + volume_offset, z, y, x )
               for v, offsets in enumerate( patch_offsets_per_volume )
               for z, y, x in offsets ] ).astype( 'int64' )
         self.__patch_offsets = patch_offsets
 
-        log.item( "extracting image patches" )
         image_data = [ volume.images for volume in volumes ]
         self.__image_patches = PatchSet.extract(
             image_data, volume_offset, patch_offsets, patch_shape )
 
-        log.item( "extracting label patches" )
         label_data = [ volume.labels for volume in volumes ]
         self.__label_patches = PatchSet.extract(
             label_data, volume_offset, patch_offsets, patch_shape )
 
-        log.item( "extracting mask patches" )
         mask_data = [ volume.masks for volume in volumes ]
         self.__mask_patches = PatchSet.extract(
             mask_data, volume_offset, patch_offsets, patch_shape )

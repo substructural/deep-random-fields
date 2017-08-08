@@ -4,6 +4,7 @@
 
 #---------------------------------------------------------------------------------------------------
 
+from datetime import datetime
 
 import theano
 import theano.tensor as T
@@ -261,17 +262,29 @@ class Optimiser( object ) :
         self.log.subsection( step_name + " for epoch " + str(epoch) )
         costs = []
 
+        batches = len( data )
+        epoch_start = datetime.now()
+
         for batch, ( images, distribution, positions ) in enumerate( data ):
             
+            self.log.entry( f"{step_name} epoch: {epoch}, batch: {batch}/{batches}" )
+            batch_start = datetime.now()
             predicted_distribution, cost = step( images, distribution )
 
             costs.append( cost )
             monitor.on_batch( epoch, batch, predicted_distribution, distribution, positions )
-            self.log.entry( step_name + " batch " + str(batch) + ", cost: " + str( cost ) )
+            batch_duration = ( datetime.now() - batch_start ).total_seconds()
+
+            self.log.item( f"time: {batch_duration}" )
+            self.log.item( f"cost: {cost}" )
 
         mean_cost = numpy.sum( costs ) / len( costs )
         monitor.on_epoch( epoch, mean_cost, model )
-        self.log.entry( step_name + " cost for epoch: " + str(mean_cost) )
+        epoch_duration = ( datetime.now() - epoch_start ).total_seconds()
+
+        self.log.entry( f"step_name epoch {epoch}" )
+        self.log.item( f"time: {epoch_duration}" )
+        self.log.item( f"cost: {mean_cost}" )
 
         return mean_cost
 
@@ -285,7 +298,7 @@ class Optimiser( object ) :
             validation_monitor ):
 
         self.log.section( "constructing graph" )
-        costs = []
+        optimisation_start = datetime.now()
 
         self.log.entry( "constructing validation graph" )
         validation_step = self.validation_step( model )
@@ -293,7 +306,13 @@ class Optimiser( object ) :
         self.log.entry( "constructing optimisation graph" )
         optimisation_step = self.optimisation_step( model )
 
+        graph_duration = ( datetime.now() - optimisation_start ).total_seconds()
+        self.log.entry( f"graph construction time: {graph_duration}" )
+
+
         self.log.section( "optimising model" )
+        costs = []
+
         for epoch in range( self.parameters.maximum_epochs ):
 
             self.iterate(
@@ -312,7 +331,9 @@ class Optimiser( object ) :
                 self.log.entry( "optimisation has overfit" )
                 break
 
+        optimisation_duration = ( datetime.now() - optimisation_start ).total_seconds()
         self.log.entry( "optimisation complete" )
+        self.log.entry( f"optimisation time: {optimisation_duration}" )
         return model
 
 
