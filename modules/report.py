@@ -202,7 +202,7 @@ class SourceData( object ):
 
     @staticmethod
     def image_data_from_volumes( volumes, offsets, target_shape ):
-
+        
         return { i : Images.extract( volumes[ i ].images, offsets[ i ], target_shape )
                  for i in volumes }
 
@@ -254,7 +254,7 @@ class Report( object ):
 
         volumes = SourceData.representative_volumes_for_metrics( metrics, dataset )
         distributions, offsets = SourceData.representative_distributions_and_offsets_for_metrics(
-            dice_per_class,
+            metrics,
             results )
 
         image_data = SourceData.image_data_from_volumes( volumes, offsets, reconstructed_shape )
