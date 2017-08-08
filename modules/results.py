@@ -12,6 +12,9 @@
 #---------------------------------------------------------------------------------------------------
 
 import os
+import os.path
+import re
+
 import enum
 import collections
 
@@ -202,6 +205,40 @@ class SegmentationResults( object ):
 
         dice_scores_for_class = self.dice_scores_per_class[ :, class_index ]
         return Metrics.all_statistic_values_and_indices( dice_scores_for_class )
+
+
+    def restore( self, dataset, sample_parameters, log = output.Log() ):
+
+        log.subsection( 'querying results path' )
+
+        reconstructed_shape = sample_parameters.reconstructed_shape
+        file_names = os.listdir( self.archive.data_path )
+
+        pattern = os.path.basename(
+            self.archive.saved_object_file_name( 'segmentation', '([0-9]+)', self.epoch ) )
+
+        query = re.compile( pattern )
+        queries = [ ( name, query.match( name ) ) for name in file_names ]
+        sources = [ ( name, int( matched.groups()[0] ) ) for name, matched in queries if matched ]
+
+        if not sources:
+            raise Exception(
+                f'no valid sources found.\n' +
+                f'  - pattern: {pattern}\n' +
+                f'  - path: {self.archive.data_path}' )
+
+        log.entry( 'found:' )
+        for name, volume_id in sources:
+
+            log.item( f'{name} ({volume_id})' )
+
+            volume = dataset.validation_set[ volume_id ].read_volume()
+            predicted_distribution, offset = self.predicted_distribution( volume_id )
+            reference_labels = Images.extract( volume.labels, offset, reconstructed_shape )
+            reference_distribution = labels.dense_volume_indices_to_dense_volume_distribution(
+                reference_labels, self.class_count )
+
+            self.append( predicted_distribution, reference_distribution )
     
 
     def append_and_save(

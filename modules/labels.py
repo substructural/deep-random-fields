@@ -114,6 +114,16 @@ FLOAT_X = theano.config.floatX
 # primitive dense patch functions
 
 
+def dense_volume_indices_to_dense_volume_distribution( indices, index_count ) :
+
+    index_patches_shape = (1, ) + indices.shape
+    distribution_volume_shape = indices.shape + ( index_count, )
+    distribution_patches = dense_patch_indices_to_dense_patch_distribution(
+        indices.reshape( index_patches_shape ),
+        index_count )
+    return distribution_patches.reshape( distribution_volume_shape )
+
+
 def dense_patch_indices_to_dense_patch_distribution( indices, index_count ) :
 
     patch_count = indices.shape[ 0 ]

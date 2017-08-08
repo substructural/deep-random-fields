@@ -9,7 +9,7 @@ import os
 import os.path
 
 import labels
-from results import Images
+from results import Images, SegmentationResults
 
 import ipdb
 
@@ -225,6 +225,18 @@ class SourceData( object ):
 #---------------------------------------------------------------------------------------------------
 
 class Report( object ):
+
+
+    @staticmethod
+    def generate( experiment, epoch ):
+
+        definition = experiment.definition
+        dataset = experiment.dataset
+        results = SegmentationResults(
+            experiment.output_path, definition.experiment_id, epoch, definition.label_count )
+
+        results.restore( dataset, definition.sample_parameters, experiment.log )
+        Report.write( results, dataset, definition.sample_parameters )
 
 
     @staticmethod
