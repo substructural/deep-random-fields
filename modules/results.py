@@ -217,7 +217,8 @@ class SegmentationResults( object ):
         data = {
             'predicted' : predicted_distribution,
             'offset'    : offset_in_input }
-        self.archive.save_array_output( data, 'segmentation', volume_id, self.epoch )
+        name = self.archive.save_array_output( data, 'segmentation', volume_id, self.epoch )
+        self.__files.append( name )
 
 
     def append( self, predicted_distribution, reference_distribution ):

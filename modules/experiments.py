@@ -286,6 +286,7 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             class_count,
             patch_distributions_to_labelled_volume,
             parameters,
+            retain_current_results_only = False,
             log = output.Log() ):
 
         self.__log = log
@@ -294,10 +295,9 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
         self.__results_id = results_id
         self.__data_path = data_path
         self.__class_count = class_count
+        self.__retain_current_results_only = retain_current_results_only
 
-        margin_loss = 2 * parameters.window_margin
-        output_patch_shape = numpy.array( parameters.patch_shape ) - margin_loss
-        accumulator_shape = ( 0, ) + tuple( output_patch_shape ) + ( class_count, )
+        accumulator_shape = ( 0, ) + tuple( parameters.output_patch_shape ) + ( class_count, )
         self.__predicted = numpy.zeros(( accumulator_shape ))
         self.__reference = numpy.zeros(( accumulator_shape ))
         self.__positions = numpy.zeros(( 0, 4 )).astype( 'int64' )
@@ -322,7 +322,8 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
         if self.__results and self.__results.epoch != epoch:
             
-            self.__results.delete_from_archive()
+            if self.__retain_current_results_only:
+                self.__results.delete_from_archive()
             self.__results = None
             
 
