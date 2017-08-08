@@ -319,11 +319,12 @@ class Report( object ):
     
         prefix = 'report-' + section_name.replace( ' ', '_' )
         file_names = (
-            [ [ archive.saved_object_file_name(
-                    prefix,
-                    f'{axis.name}-{position.name}.png' )
+            [ [ archive.saved_object_file_name( prefix, f'{axis.name}-{position.name}.png' )
                 for position in Images.SamplePositions ]
               for axis in Images.Axes ] )
+
+        relative_file_names = (
+            [ [ os.path.basename( file_name ) for file_name in row ] for row in file_names ] )
 
         for i in range( axis_count ):
             for j in range( position_count ):
@@ -331,7 +332,7 @@ class Report( object ):
                     os.remove( file_names[ i ][ j ] )
                 Images.save_image( sample_images_for_statistic[ i ][ j ], file_names[ i ][ j ] )
 
-        return file_names
+        return relative_file_names
 
 
 #---------------------------------------------------------------------------------------------------
