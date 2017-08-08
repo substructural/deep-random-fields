@@ -34,6 +34,34 @@ import sample
 #---------------------------------------------------------------------------------------------------
 
 
+def segmentation_hook( name, argv, definition ):
+
+    if name == '__main__' :
+
+        operation = argv[ 1 ]
+        oasis_input_path = argv[ 2 ]
+        output_base_path = argv[ 3 ]
+
+        experiment = SegmentationByDenseInferenceExperiment(
+            definition,
+            oasis_input_path,
+            output_base_path,
+            output.Log( sys.stdout ) )
+
+        if operation == 'train':
+
+            experiment.run( seed = 42 ) 
+
+        if operation == 'report':
+
+            epoch = int( argv[4] )
+            report.Report.generate( experiment, epoch )
+ 
+
+
+#---------------------------------------------------------------------------------------------------
+
+
 class ExperimentDefinition( object ):
 
     
@@ -65,7 +93,7 @@ class ExperimentDefinition( object ):
         raise NotImplementedError() 
 
     
-    def optimiser( self, log ):
+    def optimiser( self, dataset, log ):
 
         raise NotImplementedError() 
 
@@ -82,7 +110,7 @@ class SegmentationExperiment( object ):
         
         self.__log = log
         self.__input_path = input_path
-        self.__output_path = output_path
+        self.__output_path = output_path + definition.experiment_id
         self.__definition = definition
 
         self.__model = None
@@ -121,7 +149,7 @@ class SegmentationExperiment( object ):
 
         if not self.__optimiser:
             self.log.entry( 'constructing optimiser' )
-            self.__optimiser = self.definition.optimiser( self.log )
+            self.__optimiser = self.definition.optimiser( self.dataset, self.log )
 
         return self.__optimiser
     
@@ -158,7 +186,8 @@ class SegmentationExperiment( object ):
             self.definition.label_count, 
             self.label_conversion_for_results,
             self.definition.sample_parameters,
-            self.log )
+            log = self.log,
+            retain_current_results_only = False )
 
 
     @property
@@ -205,10 +234,10 @@ class SegmentationExperiment( object ):
         random_generator = numpy.random.RandomState( seed = seed )
 
         self.log.subsection( "constructing components" )
-        optimiser = self.optimiser
         training_set = self.training_set( dataset, random_generator )
         validation_set = self.validation_set( dataset )
         validation_results_monitor = self.validation_result_monitor()
+        optimiser = self.optimiser
         model = self.model
 
         optimiser.optimise_until_converged(
@@ -288,8 +317,8 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             class_count,
             patch_distributions_to_labelled_volume,
             parameters,
-            retain_current_results_only = False,
-            log = output.Log() ):
+            log = output.Log(),
+            retain_current_results_only = False ):
 
         self.__log = log
         self.__parameters = parameters

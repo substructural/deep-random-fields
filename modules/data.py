@@ -231,6 +231,7 @@ class Dataset( object ) :
 
         return self.__testing_set
 
+        
 
 
 #---------------------------------------------------------------------------------------------------
@@ -257,6 +258,38 @@ class Normalisation:
         variance = N.sum( ( ( images - mean ) * mask ) ** 2 ) / count
 
         return ( images - mean ) / variance
+
+
+    @staticmethod
+    def class_distribution_in_data_subset( data_subset, label_count, log = output.Log() ):
+
+        log.entry( 'computing class distribution in training set:' )
+
+        counts = Normalisation.class_counts_in_data_subset( data_subset, label_count )
+        total = N.sum( counts )
+        priors = counts.astype( 'float64' ) / total
+
+        for i, p in enumerate( priors ):
+            log.item( f'class {i}: {p}' )
+
+        return priors
+
+
+    @staticmethod
+    def class_counts_in_data_subset( data_subset, label_count ):
+
+        counts = N.zeros( ( label_count, ) )
+
+        for aquisition in data_subset:
+
+            volume = aquisition.read_volume()
+            labels = volume.labels
+
+            for label in range( label_count ):
+
+                counts[ label ] = N.count_nonzero( labels == label )
+
+        return counts
     
 
 
