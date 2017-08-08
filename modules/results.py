@@ -393,7 +393,7 @@ class Images:
         predicted_mask = labels_to_masks( predicted_label_volume, class_count )[ class_index ]
         reference_mask = labels_to_masks( reference_label_volume, class_count )[ class_index ]
         
-        difference = Images.difference_of_masks( predicted_mask, reference_mask )
+        difference = Images.difference_of_masks( predicted_mask, reference_mask, True )
         overlay = Images.overlay( image_data, difference )
         return Images.sample_images( overlay )
 
@@ -500,7 +500,7 @@ class Images:
     def save_image( image, file_path ):
 
         figure, axes = matplotlib.pyplot.subplots(1, 1)
-        axes.imshow( image )
+        axes.imshow( numpy.flip( image, axis = 0 ) )
         axes.set_axis_off()
 
         figure.savefig( file_path, bbox_inches = 'tight', pad_inches = 0.0, transparent = True )
