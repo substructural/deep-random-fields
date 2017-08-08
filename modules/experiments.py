@@ -19,6 +19,7 @@ import sys
 import ipdb
 
 import numpy
+import numpy.random
 from numpy import logical_not as negation
 
 import data
@@ -196,11 +197,12 @@ class SegmentationExperiment( object ):
         return self.__log
 
 
-    def run( self, random_generator ) :
+    def run( self, seed ) :
 
         self.log.section( "initialising experiment" )
         dataset = self.dataset
         sample_parameters = self.definition.sample_parameters
+        random_generator = numpy.random.RandomState( seed = seed )
 
         self.log.subsection( "constructing components" )
         optimiser = self.optimiser
