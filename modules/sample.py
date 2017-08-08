@@ -53,6 +53,36 @@ class Parameters( object ) :
                  "window_margin     : " + str( self.window_margin ) + "\n}" )
 
 
+    @property
+    def reconstructed_shape( self ):
+
+        target_shape = numpy.array( self.target_shape )
+        margin_loss = numpy.array( self.window_margin ) * 2
+        return target_shape - margin_loss
+
+
+    @property
+    def output_patch_shape( self ):
+
+        margin_loss = numpy.array( self.window_margin ) * 2
+        input_patch_shape = numpy.array( self.patch_shape )
+        output_patch_shape = input_patch_shape - margin_loss
+
+        patch_stride = numpy.ones( ( len( input_patch_shape ), ) ) * self.patch_stride
+        assert numpy.array_equal( output_patch_shape, patch_stride )
+
+        return output_patch_shape
+
+
+    @property
+    def patches_per_volume( self ):
+
+        target_shape = numpy.array( self.target_shape )
+        patch_shape = numpy.array( self.patch_shape )
+        patches_per_axis = ( ( target_shape - patch_shape ) // self.patch_stride ) + 1
+        return numpy.prod( patches_per_axis )
+
+
     def with_volume_count( self, volume_count ) :
 
         other = copy.copy( self )
@@ -119,17 +149,6 @@ class Parameters( object ) :
 #---------------------------------------------------------------------------------------------------
 
 class PatchSet( object ):
-
-
-    @staticmethod
-    def batches_per_epoch( volume_count, target_shape, patch_shape, patches_per_batch ):
-
-        patches_per_volume = numpy.prod( numpy.array( target_shape ) // numpy.array( patch_shape ) )
-        total_patch_count = patches_per_volume * volume_count
-
-        batch_count = int( math.ceil( float( total_patch_count ) / patches_per_batch ) )
-        assert batch_count >= 0
-        return batch_count
 
 
     @staticmethod
@@ -457,12 +476,12 @@ class SequentialPatchSet( PatchSet ):
         start_in_batch = ( 0, start[1] )
 
         end = SequentialPatchSet.volume_and_patch_index_for_batch( batch + 1, parameters )
-        end_patch = end[ 1 ]
-        end_volume = end[ 0 ] if end_patch == 0 else end[ 0 ] + 1
-        end_in_batch = ( end_volume - start_volume, end[1] )
+        #end_patch = end[ 1 ]
+        last_volume = end[ 0 ] #if end_patch == 0 else end[ 0 ] + 1
+        end_in_batch = ( last_volume - start_volume, end[1] )
 
         volumes = [
-            aquisition.read_volume() for aquisition in aquisitions[ start_volume : end_volume ] ]
+            aquisition.read_volume() for aquisition in aquisitions[ start_volume : last_volume + 1 ] ]
 
         offsets_per_volume = [
             PatchSet.offsets_in_volume(
@@ -481,6 +500,14 @@ class SequentialPatchSet( PatchSet ):
                 start_in_batch,
                 end_in_batch )
             for i in range( len( volumes ) ) ]
+
+        
+
+        print(  '> sequential patch set' )
+        print( f'| - batch {batch} start:{start} start_in_batch:{start_in_batch}' )
+        print( f'| - batch {batch} end:{end} end_in_batch:{end_in_batch}' )
+        print( f'| - offsets per volume: {len(offsets_per_volume)} {len(offsets_per_volume[0])}' )
+        print( f'| - offsets per volume in batch: {len(offsets_per_volume_in_this_batch)} {len(offsets_per_volume_in_this_batch[0])}' )
 
         super( SequentialPatchSet, self ).__init__(
             volumes,
@@ -511,11 +538,11 @@ class Accessor( object ) :
         self.__log = log
 
         volume_count = len( self.aquisitions )
-        target_shape = self.sample_parameters.target_shape
-        patch_shape = self.sample_parameters.patch_shape
-        patch_count = self.sample_parameters.patch_count
-        self.__length = PatchSet.batches_per_epoch(
-            volume_count, target_shape, patch_shape, patch_count )
+        patches_per_batch = self.sample_parameters.patch_count
+
+        total_patch_count = volume_count * sample_parameters.patches_per_volume
+        batch_count = int( math.ceil( float( total_patch_count ) / patches_per_batch ) )
+        self.__length = batch_count
 
 
     @property
@@ -571,6 +598,11 @@ class Accessor( object ) :
                     images = self.accessor.image_normalisation( patches.image_patches )
                     labels = self.accessor.label_conversion( patches.label_patches )
                     offsets = patches.patch_offsets
+                    print(  '> accessor' )
+                    print( f'| - batch {self.batch + 1} of {len(self.accessor)}' )
+                    print( f'| - offsets: {len(offsets)}' )
+                    print( f'| - images: {len(images)}' )
+                    print( f'| - labels: {len(labels)}' )
                     self.batch += 1
                     return ( images, labels, offsets )
                 else:

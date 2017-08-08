@@ -228,9 +228,10 @@ class Report( object ):
 
 
     @staticmethod
-    def write( results, dataset, target_shape ):
+    def write( results, dataset, sample_parameters ):
 
         class_count = results.class_count
+        reconstructed_shape = sample_parameters.reconstructed_shape
 
         dice = results.statistics_for_mean_dice_score_per_volume
         dice_per_class = [
@@ -244,8 +245,8 @@ class Report( object ):
             dice_per_class,
             results )
 
-        image_data = SourceData.image_data_from_volumes( volumes, offsets, target_shape )
-        reference = SourceData.reference_labels_from_volumes( volumes, offsets, target_shape )
+        image_data = SourceData.image_data_from_volumes( volumes, offsets, reconstructed_shape )
+        reference = SourceData.reference_labels_from_volumes( volumes, offsets, reconstructed_shape )
         predicted = SourceData.predicted_labels_from_distributions( distributions )
 
         archive = results.archive

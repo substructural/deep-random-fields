@@ -179,15 +179,6 @@ class SegmentationExperiment( object ):
 
 
     @property
-    def reconstructed_shape( self ):
-
-        parameters = self.definition.sample_parameters
-        target_shape = numpy.array( parameters.target_shape )
-        margin_loss = numpy.array( parameters.window_margin ) * 2
-        return target_shape - margin_loss
-
-
-    @property
     def input_path( self ):
 
         return self.__input_path
@@ -209,6 +200,7 @@ class SegmentationExperiment( object ):
 
         self.log.section( "initialising experiment" )
         dataset = self.dataset
+        sample_parameters = self.definition.sample_parameters
 
         self.log.subsection( "constructing components" )
         optimiser = self.optimiser
@@ -228,7 +220,7 @@ class SegmentationExperiment( object ):
 
         self.log.subsection( "constructing report" )
         experiment_results = validation_results_monitor.results_for_most_recent_epoch
-        report.Report.write( experiment_results, dataset, self.reconstructed_shape )
+        report.Report.write( experiment_results, dataset, sample_parameters )
         self.log.entry( "report complete" )
 
         return validation_results_monitor.results_for_most_recent_epoch
@@ -314,13 +306,9 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
     
 
     @property
-    def patches_per_volume( self ):
+    def sample_parameters( self ):
     
-        target_shape = numpy.array( self.__parameters.target_shape )
-        patch_shape = numpy.array( self.__parameters.patch_shape )
-        patch_stride = self.__parameters.patch_stride
-        patches_per_axis = ( ( target_shape - patch_shape ) // patch_stride ) + 1
-        return numpy.prod( patches_per_axis )
+        return self.__parameters
 
 
     @property
@@ -351,8 +339,8 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
     def reconstructed_volume( self, distribution_patches ):
         
-        target_shape = numpy.array( self.__parameters.target_shape )
-        margin = self.__parameters.window_margin
+        target_shape = numpy.array( self.sample_parameters.target_shape )
+        margin = self.sample_parameters.window_margin
         distribution_to_labels = self.__patch_distributions_to_labelled_volume
         return distribution_to_labels( distribution_patches, target_shape, margin )
 
@@ -360,6 +348,8 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
     def on_batch( self, epoch, batch, predicted, reference, positions ):
 
         assert batch is not None
+        assert positions.shape[0] == reference.shape[0]
+        assert predicted.shape == reference.shape
 
         results_for_epoch = self.results_for_epoch( epoch )
 
@@ -369,9 +359,13 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
         assert self.__predicted.shape == self.__reference.shape
 
-        patch_count_per_volume = self.patches_per_volume
+        patch_count_per_volume = self.sample_parameters.patches_per_volume
         accumulated_count = self.__predicted.shape[0]
         completed_count = accumulated_count // patch_count_per_volume
+        self.__log.entry( f'this batch  : {predicted.shape[0]}' )
+        self.__log.entry( f'accumulated : {accumulated_count}' )
+        self.__log.entry( f'per volume  : {patch_count_per_volume}' )
+        self.__log.entry( f'completed   : {completed_count}' )
         
         if completed_count > 0:
 
@@ -380,6 +374,7 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
                 n = patch_count_per_volume * ( i + 1 )
                 offset = self.__positions[ m, 1: ]
                 volume_id = self.__positions[ m ][ 0 ]
+                self.__log.entry( f'reconstructing : {volume_id}' )
                 results_for_epoch.append_and_save(
                     volume_id,
                     self.reconstructed_volume( self.__predicted[ m : n ] ),
