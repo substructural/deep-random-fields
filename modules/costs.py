@@ -72,7 +72,10 @@ class CategoricalCrossEntropyCost( CostFunction ):
 
     def cost( self, outputs, labels ):
 
-        cross_entropy = (-1) * T.sum( labels * T.log( outputs ), axis=self.distribution_axis )
+        reference = labels.clip( 0.0, 1.0 )
+        predicted = outputs.clip( 2**(-126), 1.0 )
+
+        cross_entropy = (-1) * T.sum( reference * T.log2( predicted ), axis=self.distribution_axis )
         mean_cross_entropy = T.mean( cross_entropy )
         return mean_cross_entropy
 
