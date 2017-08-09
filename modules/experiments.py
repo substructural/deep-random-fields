@@ -13,6 +13,7 @@ form required for the calculation of results.
 
 #---------------------------------------------------------------------------------------------------
 
+import inspect
 import os
 import sys
 
@@ -29,34 +30,6 @@ import output
 import results
 import report
 import sample
-
-
-#---------------------------------------------------------------------------------------------------
-
-
-def segmentation_hook( name, argv, definition ):
-
-    if name == '__main__' :
-
-        operation = argv[ 1 ]
-        oasis_input_path = argv[ 2 ]
-        output_base_path = argv[ 3 ]
-
-        experiment = SegmentationByDenseInferenceExperiment(
-            definition,
-            oasis_input_path,
-            output_base_path,
-            output.Log( sys.stdout ) )
-
-        if operation == 'train':
-
-            experiment.run( seed = 42 ) 
-
-        if operation == 'report':
-
-            epoch = int( argv[4] )
-            report.Report.generate( experiment, epoch )
- 
 
 
 #---------------------------------------------------------------------------------------------------
@@ -110,7 +83,7 @@ class SegmentationExperiment( object ):
         
         self.__log = log
         self.__input_path = input_path
-        self.__output_path = output_path + definition.experiment_id
+        self.__output_path = output_path + '/' + definition.experiment_id
         self.__definition = definition
 
         self.__model = None
@@ -128,7 +101,6 @@ class SegmentationExperiment( object ):
     def dataset( self ):
 
         if not self.__dataset:
-            self.log.subsection( 'constructing dataset' )
             self.__dataset = self.definition.dataset( self.input_path, self.log )
 
         return self.__dataset
@@ -175,6 +147,15 @@ class SegmentationExperiment( object ):
             self.image_normalisation_for_optimisation,
             self.label_conversion_for_optimisation,
             self.log )
+
+
+    def training_cost_monitor( self ):
+
+        self.log.entry( 'constructing training cost store' )
+        return TrainingCostMonitor(
+            self.output_path,
+            self.definition, 
+            log = self.log )
 
 
     def validation_result_monitor( self ):
@@ -229,14 +210,15 @@ class SegmentationExperiment( object ):
     def run( self, seed ) :
 
         self.log.section( "initialising experiment" )
+        self.log.entry( self.definition.experiment_id.replace( '_', ' ' ) )
         dataset = self.dataset
-        sample_parameters = self.definition.sample_parameters
         random_generator = numpy.random.RandomState( seed = seed )
 
         self.log.subsection( "constructing components" )
         training_set = self.training_set( dataset, random_generator )
         validation_set = self.validation_set( dataset )
         validation_results_monitor = self.validation_result_monitor()
+        training_cost_monitor = self.training_cost_monitor()
         optimiser = self.optimiser
         model = self.model
 
@@ -244,14 +226,12 @@ class SegmentationExperiment( object ):
             model,
             training_set,
             validation_set,
-            optimisation.Monitor(),
+            training_cost_monitor,
             validation_results_monitor )
-
-        self.log.entry( "optimisation complete" )
 
         self.log.subsection( "constructing report" )
         experiment_results = validation_results_monitor.results_for_most_recent_epoch
-        report.Report.write( experiment_results, dataset, sample_parameters )
+        report.Report.write( experiment_results, self )
         self.log.entry( "report complete" )
 
         return validation_results_monitor.results_for_most_recent_epoch
@@ -301,6 +281,33 @@ class SegmentationByDenseInferenceExperiment( SegmentationExperiment ):
     def label_conversion_for_results( self ):
 
         return labels.dense_patch_distribution_to_dense_volume_distribution
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+class TrainingCostMonitor( optimisation.Monitor ):
+
+    def __init__( self, output_path, experiment_definition, log = output.Log() ):
+
+        self.__output_path = output_path
+        self.__experiment_definition = experiment_definition
+
+        experiment_id = experiment_definition.experiment_id
+        self.__archive = results.Archive( output_path, experiment_id, log )
+        self.__costs = []
+        self.__times = []
+
+
+    def on_epoch( self, epoch, model, costs, times ):
+        
+        assert len( self.__costs ) == epoch
+        assert len( self.__times ) == epoch
+
+        self.__costs.append( costs )
+        self.__times.append( times )
+        self.__archive.save_array_output( numpy.array( self.__costs ), 'costs', epoch )
+        self.__archive.save_array_output( numpy.array( self.__times ), 'times', epoch )
 
 
 
@@ -414,10 +421,8 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             self.__reference = numpy.delete( self.__reference, block, 0 )
 
 
-    def on_epoch( self, epoch, mean_cost, model ):
+    def on_epoch( self, epoch, model, costs, times ):
 
-        assert mean_cost is not None
-        
         model_parameters = model.save_to_map()
         results_for_epoch = self.results_for_epoch( epoch )
         results_for_epoch.archive.save_model_parameters( model_parameters, epoch = epoch )

@@ -138,7 +138,7 @@ class Monitor( object ):
         pass
 
 
-    def on_epoch( self, epoch, mean_cost, model ):
+    def on_epoch( self, epoch, model, costs, times ):
         ''' 
         Event handler called on completion of an epoch during training or validation. 
 
@@ -261,6 +261,7 @@ class Optimiser( object ) :
 
         self.log.subsection( step_name + " for epoch " + str(epoch) )
         costs = []
+        times = []
 
         batches = len( data )
         epoch_start = datetime.now()
@@ -271,15 +272,16 @@ class Optimiser( object ) :
             batch_start = datetime.now()
             predicted_distribution, cost = step( images, distribution )
 
-            costs.append( cost )
             monitor.on_batch( epoch, batch, predicted_distribution, distribution, positions )
             batch_duration = ( datetime.now() - batch_start ).total_seconds()
+            times.append( batch_duration )
+            costs.append( cost )
 
             self.log.item( f"time: {batch_duration}" )
             self.log.item( f"cost: {cost}" )
 
+        monitor.on_epoch( epoch, model, costs, times )
         mean_cost = numpy.sum( costs ) / len( costs )
-        monitor.on_epoch( epoch, mean_cost, model )
         epoch_duration = ( datetime.now() - epoch_start ).total_seconds()
 
         self.log.entry( f"{step_name} epoch {epoch}" )
