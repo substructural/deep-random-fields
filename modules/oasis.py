@@ -95,7 +95,14 @@ class OasisAquisition( data.Aquisition ):
 class OasisDataSet( data.Dataset ):
 
 
-    def __init__( self, root_path, training_count, validation_count, testing_count, random_seed, maybe_log = None ):
+    def __init__(
+            self,
+            root_path,
+            testing_count,
+            validation_count,
+            training_count,
+            random_seed,
+            maybe_log = None ):
 
         log = maybe_log if maybe_log else output.Log()
         log.subsection( "loading OASIS dataset" )
@@ -111,7 +118,7 @@ class OasisDataSet( data.Dataset ):
         aquisitions = [ OasisAquisition( root_path, id ) for id in aquisition_ids ]
 
         super( OasisDataSet, self ).__init__(
-           aquisitions, training_count, validation_count, testing_count, random_seed, log )
+           aquisitions, testing_count, validation_count, training_count, random_seed, log )
 
 
 #----------------------------------------------------------------------------------------------------

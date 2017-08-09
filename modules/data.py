@@ -179,9 +179,9 @@ class Dataset( object ) :
     def __init__(
             self,
             aquisitions,
-            training_count,
-            validation_count,
             testing_count,
+            validation_count,
+            training_count,
             random_seed,
             maybe_log = None ) :
 
