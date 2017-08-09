@@ -12,7 +12,7 @@ import unittest
 import activation
 import costs
 import data
-import experiments
+import experiment
 import layers
 import learning_rates
 import network
@@ -26,13 +26,7 @@ import report
 #---------------------------------------------------------------------------------------------------
 
 
-class Definition( experiments.ExperimentDefinition ):
-
-
-    @property
-    def experiment_id( self ):
-
-        return 'cnn__kernel_5x3_nopool__loss_ce_unweighted__lr_001_l1_01_l2_01'
+class Definition( experiment.ExperimentDefinition ):
 
 
     @property
@@ -53,9 +47,9 @@ class Definition( experiments.ExperimentDefinition ):
         return ( sample.Parameters()
                  .with_volume_count( 10 )
                  .with_window_margin( 6 )
-                 .with_target_shape(( 170, 200, 160 ))
+                 .with_target_shape(( 172, 202, 162 ))
                  .with_patch_shape(( 22, 22, 22 ))
-                 .with_patch_count( 1000 )
+                 .with_patch_count( 2000 )
                  .with_patch_stride( 10 ) )
 
 
@@ -82,8 +76,8 @@ class Definition( experiments.ExperimentDefinition ):
         cost_function = costs.CategoricalCrossEntropyCost(
             distribution_axis, weight_L1=0.01, weight_L2=0.01 )
 
-        learning_rate = learning_rates.RMSPropLearningRate( 1e-3, 0.9 )
-        parameters = optimisation.Parameters( maximum_epochs=1 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.005, 0.9 )
+        parameters = optimisation.Parameters( maximum_epochs=2 )
         return optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate, log )
 

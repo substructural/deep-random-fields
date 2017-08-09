@@ -305,7 +305,7 @@ class Report( object ):
                 c, dice_per_class[ c ], image_data, predicted, reference, results )
             for c in range( class_count ) ]
 
-        report_name = results.results_id.replace( '_', ' ' )
+        report_name = experiment.definition.experiment_name
         file_content = html( report_name, source + overview + '\n'.join( section_per_class ) )
         file_name = archive.saved_object_file_name( 'report' ) + '.html' 
 

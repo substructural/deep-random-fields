@@ -37,11 +37,22 @@ import sample
 
 class ExperimentDefinition( object ):
 
+
+    def __init__( self ):
+
+        self.__id = type( self ).__module__
+
     
     @property
     def experiment_id( self ):
 
-        raise NotImplementedError()
+        return self.__id
+
+    
+    @property
+    def experiment_name( self ):
+
+        return self.__id.replace( '_', ' ' )
 
 
     @property

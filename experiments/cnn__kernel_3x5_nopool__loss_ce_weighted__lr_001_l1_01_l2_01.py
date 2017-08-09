@@ -12,7 +12,7 @@ import unittest
 import activation
 import costs
 import data
-import experiments
+import experiment
 import layers
 import learning_rates
 import network
@@ -26,13 +26,7 @@ import report
 #---------------------------------------------------------------------------------------------------
 
 
-class Definition( experiments.ExperimentDefinition ):
-
-
-    @property
-    def experiment_id( self ):
-
-        return 'cnn__kernel_3x5_nopool__loss_ce_weighted__lr_001_l1_01_l2_01'
+class Definition( experiment.ExperimentDefinition ):
 
 
     @property
