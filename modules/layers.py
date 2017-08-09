@@ -10,6 +10,8 @@ import theano.printing
 
 import network
 
+FloatType = T.config.floatX
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -121,6 +123,8 @@ class ConvolutionalLayer( network.Layer ) :
             kernel_shape,
             stride,
             activation_function,
+            uniform_weights = False,
+            orthogonal_weights = False,
             seed = None,
             add_input_feature_map_axis = False ) :
 
@@ -132,6 +136,8 @@ class ConvolutionalLayer( network.Layer ) :
         self.__stride = stride
         self.__activation = activation_function
         self.__add_input_feature_map_axis = add_input_feature_map_axis
+        self.__orthogonal_weights = orthogonal_weights
+        self.__uniform_weights = uniform_weights
 
 
     @property
@@ -172,13 +178,28 @@ class ConvolutionalLayer( network.Layer ) :
 
     def initial_parameter_values( self ) :
 
-        w = self.weights_shape 
-        m = N.prod( w )
-        u = N.sqrt( 1.0 / m )
-        initial_kernel = N.random.uniform( -u, +u, w ).astype( T.config.floatX )
-        initial_biases = N.zeros( self.output_feature_maps ).astype( T.config.floatX )
+        shape = self.weights_shape 
+        outputs = self.output_feature_maps
+        inputs = self.input_feature_maps + N.prod( self.kernel_shape )
 
-        return [ ( 'K', initial_kernel ), ( 'b', initial_biases ) ]
+        if self.__uniform_weights:
+            span = N.sqrt( 1.0 / inputs )
+            weights = N.random.uniform( -span, +span, shape ).astype( FloatType )
+            biases = N.random.uniform( -0.5, +0.5, outputs ).astype( FloatType )
+
+        else:
+            weights = N.random.normal( 0.0, 1.0, shape ).astype( FloatType )
+            biases = N.random.normal( 0.0, 0.5, outputs ).astype( FloatType )
+
+        if self.__orthogonal_weights:
+            flat_weights = weights.reshape(( shape[0], N.prod( shape[1:] ) ))
+            _, _, right_singular = N.linalg.svd( flat_weights, full_matrices = False )
+            orthogonal_weights = right_singular.reshape( shape )
+
+            return [ ( 'K', orthogonal_weights ), ( 'b', biases ) ]
+
+        else:
+            return [ ( 'K', weights ), ( 'b', biases ) ]
 
 
     def graph( self, parameters, inputs ) :
