@@ -5,10 +5,12 @@
 
 #---------------------------------------------------------------------------------------------------
 
+import inspect
 import os
 import os.path
 
 import labels
+import output
 from results import Images, SegmentationResults
 
 import ipdb
@@ -74,6 +76,23 @@ def html( experiment_name,
 
 </body>
 </html>
+
+'''
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+def source_section( source ):
+
+    return f'''
+    
+<hr>
+<h2>definition</h2>
+
+<pre>
+{source}
+</pre>
 
 '''
 
@@ -228,52 +247,73 @@ class Report( object ):
 
 
     @staticmethod
-    def generate( experiment, epoch ):
+    def generate( epoch, experiment ):
 
         definition = experiment.definition
-        dataset = experiment.dataset
         results = SegmentationResults(
             experiment.output_path, definition.experiment_id, epoch, definition.label_count )
 
-        results.restore( dataset, definition.sample_parameters, experiment.log )
-        Report.write( results, dataset, definition.sample_parameters )
+        results.restore( experiment.dataset, definition.sample_parameters, experiment.log )
+        Report.write( results, experiment )
 
 
     @staticmethod
-    def write( results, dataset, sample_parameters ):
+    def write( results, experiment ):
 
+        log = experiment.log
+        log.subsection( 'writing report' )
+        
         class_count = results.class_count
+        dataset = experiment.dataset
+        sample_parameters = experiment.definition.sample_parameters
         reconstructed_shape = sample_parameters.reconstructed_shape
 
+        log.entry( 'collating metrics' )
         dice = results.statistics_for_mean_dice_score_per_volume
         dice_per_class = [
             results.statistics_for_dice_score_for_class( i )
             for i in range( class_count ) ]
-        
         metrics = [ dice ] + dice_per_class
 
+        log.entry( 'loading data' )
+        log.item( 'volumes' )
         volumes = SourceData.representative_volumes_for_metrics( metrics, dataset )
+        log.item( 'distributions' )
         distributions, offsets = SourceData.representative_distributions_and_offsets_for_metrics(
             metrics,
             results )
 
+        log.entry( 'extracting data')
+        log.item( 'images' )
         image_data = SourceData.image_data_from_volumes( volumes, offsets, reconstructed_shape )
+        log.item( 'reference distribution' )
         reference = SourceData.reference_labels_from_volumes( volumes, offsets, reconstructed_shape )
+        log.item( 'predicted distribution' )
         predicted = SourceData.predicted_labels_from_distributions( distributions )
 
+        log.entry( 'generating source section' )
+        source_code = inspect.getsource( type( experiment.definition ) ) 
+        source = source_section( source_code )
+
+        log.entry( 'generating overview section' )
         archive = results.archive
         overview = Report.section_for_overview( dice, image_data, predicted, reference, results )
+
+        log.entry( 'generating per class sections' )
         section_per_class = [
             Report.section_for_class(
                 c, dice_per_class[ c ], image_data, predicted, reference, results )
             for c in range( class_count ) ]
 
         report_name = results.results_id.replace( '_', ' ' )
-        file_content = html( report_name, overview + '\n'.join( section_per_class ) )
+        file_content = html( report_name, source + overview + '\n'.join( section_per_class ) )
         file_name = archive.saved_object_file_name( 'report' ) + '.html' 
-        with open( file_name, 'w' ) as output:
-            output.write( file_content )
 
+        log.entry( f'writing report to {file_name}' )
+        with open( file_name, 'w' ) as output_file:
+            output_file.write( file_content )
+
+        log.entry( 'done' )
         return file_name
 
 
