@@ -1,5 +1,6 @@
 import importlib
 import inspect
+import optparse
 import sys
 
 import experiments
@@ -8,27 +9,62 @@ import report
 
 #---------------------------------------------------------------------------------------------------
 
+usage = 'usage: %prog [options] command experiment_1 [ ... experiment_n ]'
+command_line = optparse.OptionParser( usage )
+command_line.add_option( '-i', '--input', action = 'store' )
+command_line.add_option( '-o', '--output', action = 'store' )
+command_line.add_option( '-e', '--epoch', action = 'store', type = 'int' )
 
-experiment_name = sys.argv[ 1 ] 
-operation = sys.argv[ 2 ]
-oasis_input_path = sys.argv[ 3 ]
-output_base_path = sys.argv[ 4 ]
+#---------------------------------------------------------------------------------------------------
 
-experiment = importlib.import_module( experiment_name )
-experiment_instance = experiments.SegmentationByDenseInferenceExperiment(
-    experiment.Definition(),
-    oasis_input_path,
-    output_base_path,
-    output.Log( sys.stdout ) )
+def exit_on_error( condition, message ):
 
-if operation == 'train':
+    if condition:
+        print( f'\n{message}\n' )
+        command_line.print_help() 
+        exit( 1 )
 
-    experiment_instance.run( seed = 42 ) 
+#---------------------------------------------------------------------------------------------------
 
-if operation == 'report':
+options, arguments = command_line.parse_args()
 
-    epoch = int( sys.argv[5] )
-    report.Report.generate( epoch, experiment_instance  )
+command = arguments[0]
+experiments_to_run = arguments[1:]
+
+exit_on_error( len( arguments ) < 1, 'you must specify a command to run' )
+exit_on_error( len( arguments ) < 2, 'at least one experiment must be specified' )
+
+exit_on_error( not options.input, 'the input path argument is required' )
+exit_on_error( not options.input, 'the input path argument is required' )
+
+exit_on_error( command == 'report' and not options.epoch ,
+               'the epoch argument is required for the report command' )
+
+#---------------------------------------------------------------------------------------------------
+
+for experiment_to_run in experiments_to_run:
+
+    try:
+        experiment_name = experiment_to_run.replace( '.py', '' ) 
+        experiment_module = importlib.import_module( experiment_name )
+        experiment_instance = experiments.SegmentationByDenseInferenceExperiment(
+            experiment_module.Definition(),
+            options.input,
+            options.output,
+            output.Log( sys.stdout ) )
+
+        if command == 'train':
+
+            experiment_instance.run( seed = 42 ) 
+
+        if command == 'report':
+
+            epoch = int( sys.argv[5] )
+            report.Report.generate( epoch, experiment_instance  )
+
+    except Exception as e:
+
+        print( f'\n\ncommand {command} failed for {experiment_name}\n\nerror:\n\n{e}\n\n' )
 
 
 #---------------------------------------------------------------------------------------------------
