@@ -11,6 +11,7 @@
 
 #---------------------------------------------------------------------------------------------------
 
+import math
 import os
 import os.path
 import re
@@ -109,9 +110,6 @@ class Archive( object ):
 
 
 #---------------------------------------------------------------------------------------------------
-
-
-Statistics = collections.namedtuple( 'Statistics', [ 'mean', 'median', 'minimum', 'maximum' ] )
 
 
 class SegmentationResults( object ):
@@ -279,6 +277,13 @@ class SegmentationResults( object ):
 
 #---------------------------------------------------------------------------------------------------
 
+
+Statistics = collections.namedtuple( 'Statistics', [ 'mean', 'median', 'minimum', 'maximum' ] )
+
+CostStatistics = collections.namedtuple( 'CostStatistics', [
+    'mean', 'median', 'minimum', 'maximum', 'deviation', 'change_from_base' ] )
+
+
 class Metrics:
 
 
@@ -374,6 +379,48 @@ class Metrics:
         classes = len( multiclass_confusion )
         return numpy.array(
             [ binary_confusion( c, multiclass_confusion ) for c in classes ] )
+
+
+    @staticmethod
+    def costs_over_experiment( costs, phases = 10 ):
+
+        assert len( costs.shape ) == 2
+        epochs = costs.shape[0]
+
+        return [ Metrics.costs_over_epoch( costs[ epoch ], phases ) for epoch in range( epochs ) ]
+
+
+    @staticmethod
+    def costs_over_epoch( costs, phases = 10 ):
+
+        assert len( costs.shape ) == 1
+        count = len( costs )
+        phase_span = count // phases
+        phase_span_0 = count - ( phases - 1 ) * phase_span
+        phase_extent = lambda i : phase_span_0 + i * phase_span
+
+        baseline = Metrics.costs_over_phase( costs[ 0 : phase_span_0 ] )
+        subsequent = [
+            Metrics.costs_over_phase(
+                costs[ phase_extent( i - 1 ) : phase_extent( i ) ],
+                baseline )
+            for i in range( 1, phases ) ] 
+
+        return [ baseline ] + subsequent
+    
+        
+    @staticmethod
+    def costs_over_phase( costs, baseline = None ):
+
+        mean = numpy.mean( costs )
+        median = numpy.median( costs )
+        minimum = numpy.min( costs )
+        maximum = numpy.max( costs )
+        standard_deviation = math.sqrt( numpy.var( costs ) )
+        change_from_base = median / baseline.median if baseline else 0.0
+        
+        return CostStatistics(
+            mean, median, minimum, maximum, standard_deviation, change_from_base )
 
 
 

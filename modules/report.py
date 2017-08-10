@@ -11,7 +11,7 @@ import os.path
 
 import labels
 import output
-from results import Images, SegmentationResults
+from results import Images, Metrics, SegmentationResults
 
 import ipdb
 
@@ -20,6 +20,7 @@ import ipdb
 
 
 def html( experiment_name,
+          epoch,
           content,
           page_foreground = '#000000',
           page_background = '#ffffff',
@@ -71,6 +72,7 @@ def html( experiment_name,
 
 <body>
 <h1>{experiment_name}</h1>
+<h2>epoch: {epoch}</h2>
 
 {content}
 
@@ -139,10 +141,10 @@ def statistics_table( statistics ):
 
     <tr> <th> metric  </th> <th> value     </th> </tr>
 
-    <tr> <td> mean    </td> <td> {statistics.mean[0]}    </td> </tr>
-    <tr> <td> median  </td> <td> {statistics.median[0]}  </td> </tr>
-    <tr> <td> minimum </td> <td> {statistics.minimum[0]} </td> </tr>
-    <tr> <td> maximum </td> <td> {statistics.maximum[0]} </td> </tr>
+    <tr> <td> mean    </td> <td> {statistics.mean[0]:0.5}    </td> </tr>
+    <tr> <td> median  </td> <td> {statistics.median[0]:0.5}  </td> </tr>
+    <tr> <td> minimum </td> <td> {statistics.minimum[0]:0.5} </td> </tr>
+    <tr> <td> maximum </td> <td> {statistics.maximum[0]:0.5} </td> </tr>
 
 </table>
 
@@ -190,6 +192,58 @@ def image_cell( image_path ):
     return f'''
         <td><image src="{image_path}"></td> '''
 
+
+
+#---------------------------------------------------------------------------------------------------
+
+
+def cost_table_row( epoch, phase, statistic ):
+
+    return f'''
+
+    <tr>
+    <td> {epoch} </td>
+    <td> {phase} </td>
+    <td> {statistic.mean:0.3} </td>
+    <td> {statistic.median:0.3} </td>
+    <td> {statistic.minimum:0.3} </td>
+    <td> {statistic.maximum:0.3} </td>
+    <td> {statistic.deviation:0.3} </td>
+    <td> {statistic.change_from_base:0.3} </td>
+    </tr>
+
+'''
+
+    
+def cost_table( costs_per_epoch ):
+
+    rows = ''.join( [
+        cost_table_row( epoch, phase, cost )
+        for epoch, costs_per_phase in enumerate( costs_per_epoch )
+        for phase, cost in enumerate( costs_per_phase ) ] )
+
+    return f'''
+
+<hr>
+<h2>costs</h2>
+<table class="metrictable">
+
+    <tr> 
+         <th> epoch  </th> 
+         <th> phase  </th> 
+         <th> mean </th> 
+         <th> median </th> 
+         <th> minimum </th> 
+         <th> maximum </th> 
+         <th> deviation </th> 
+         <th> change </th> 
+    </tr>
+    
+    {rows}
+
+</table>
+
+'''
 
 #---------------------------------------------------------------------------------------------------
 
@@ -240,6 +294,13 @@ class SourceData( object ):
                  for i, d in distributions.items() }
     
 
+    @staticmethod
+    def costs_for_epoch( epoch, archive ):
+
+        with archive.read_array_output( 'costs', epoch = epoch ) as data:
+            costs = data[ 'arr_0' ]
+            return costs
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -263,7 +324,9 @@ class Report( object ):
         log = experiment.log
         log.subsection( 'writing report' )
         
+        epoch = results.epoch
         class_count = results.class_count
+        archive = results.archive
         dataset = experiment.dataset
         sample_parameters = experiment.definition.sample_parameters
         reconstructed_shape = sample_parameters.reconstructed_shape
@@ -276,38 +339,38 @@ class Report( object ):
         metrics = [ dice ] + dice_per_class
 
         log.entry( 'loading data' )
-        log.item( 'volumes' )
         volumes = SourceData.representative_volumes_for_metrics( metrics, dataset )
-        log.item( 'distributions' )
         distributions, offsets = SourceData.representative_distributions_and_offsets_for_metrics(
             metrics,
             results )
 
         log.entry( 'extracting data')
-        log.item( 'images' )
         image_data = SourceData.image_data_from_volumes( volumes, offsets, reconstructed_shape )
-        log.item( 'reference distribution' )
         reference = SourceData.reference_labels_from_volumes( volumes, offsets, reconstructed_shape )
-        log.item( 'predicted distribution' )
         predicted = SourceData.predicted_labels_from_distributions( distributions )
 
         log.entry( 'generating source section' )
         source_code = inspect.getsource( type( experiment.definition ) ) 
         source = source_section( source_code )
 
-        log.entry( 'generating overview section' )
-        archive = results.archive
-        overview = Report.section_for_overview( dice, image_data, predicted, reference, results )
+        log.entry( 'generating cost section' )
+        cost_data = SourceData.costs_for_epoch( epoch, results.archive )
+        costs = Metrics.costs_over_experiment( cost_data, phases = 10 )
+        section_for_costs = cost_table( costs )
 
-        log.entry( 'generating per class sections' )
-        section_per_class = [
+        log.entry( 'generating dice sections' )
+        section_for_all_classes = Report.section_for_all_classes(
+            dice, image_data, predicted, reference, results )
+        section_per_class = '\n'.join( [
             Report.section_for_class(
                 c, dice_per_class[ c ], image_data, predicted, reference, results )
-            for c in range( class_count ) ]
+            for c in range( class_count ) ] )
 
+        log.entry( 'combining sections' )
         report_name = experiment.definition.experiment_name
-        file_content = html( report_name, source + overview + '\n'.join( section_per_class ) )
-        file_name = archive.saved_object_file_name( 'report' ) + '.html' 
+        sections = source + section_for_costs + section_for_all_classes + section_per_class
+        file_content = html( report_name, epoch, sections )
+        file_name = archive.saved_object_file_name( 'report', epoch = epoch ) + '.html' 
 
         log.entry( f'writing report to {file_name}' )
         with open( file_name, 'w' ) as output_file:
@@ -318,7 +381,13 @@ class Report( object ):
 
 
     @staticmethod
-    def section_for_overview( statistics, image_data, predicted, reference, results ):
+    def section_for_costs( costs ):
+
+        pass
+
+
+    @staticmethod
+    def section_for_all_classes( statistics, image_data, predicted, reference, results ):
          
         name = f'dice over all classes'
         method = Images.sample_difference_of_multiple_masks
