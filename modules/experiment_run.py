@@ -61,7 +61,7 @@ for experiment_to_run in experiments_to_run:
 
         if command == 'report':
 
-            epoch = int( sys.argv[5] )
+            epoch = options.epoch
             report.Report.generate( epoch, experiment_instance  )
 
         if command == 'print':

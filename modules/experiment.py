@@ -317,8 +317,8 @@ class TrainingCostMonitor( optimisation.Monitor ):
 
         self.__costs.append( costs )
         self.__times.append( times )
-        self.__archive.save_array_output( numpy.array( self.__costs ), 'costs', epoch )
-        self.__archive.save_array_output( numpy.array( self.__times ), 'times', epoch )
+        self.__archive.save_array_output( numpy.array( self.__costs ), 'costs', epoch = epoch )
+        self.__archive.save_array_output( numpy.array( self.__times ), 'times', epoch = epoch )
 
 
 
