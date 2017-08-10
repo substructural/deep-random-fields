@@ -183,13 +183,14 @@ class ConvolutionalLayer( network.Layer ) :
         inputs = self.input_feature_maps + N.prod( self.kernel_shape )
 
         if self.__uniform_weights:
-            span = N.sqrt( 1.0 / inputs )
+            span = N.sqrt( 6.0 / ( inputs + outputs ) )
             weights = N.random.uniform( -span, +span, shape ).astype( FloatType )
-            biases = N.random.uniform( -0.5, +0.5, outputs ).astype( FloatType )
+            biases = N.random.uniform( 0, 0.1, outputs ).astype( FloatType )
 
         else:
-            weights = N.random.normal( 0.0, 1.0, shape ).astype( FloatType )
-            biases = N.random.normal( 0.0, 0.5, outputs ).astype( FloatType )
+            sigma = 1.0 / ( inputs + outputs )
+            weights = N.random.normal( 0.0, sigma, shape ).astype( FloatType )
+            biases = N.random.normal( 0.0, 0.1, outputs ).astype( FloatType )
 
         if self.__orthogonal_weights:
             flat_weights = weights.reshape(( shape[0], N.prod( shape[1:] ) ))
