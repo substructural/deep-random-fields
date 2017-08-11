@@ -18,6 +18,12 @@ FloatType = T.config.floatX
 class ScalarFeatureMapsProbabilityDistribution( network.Layer ):
 
 
+    @property
+    def parameter_names( self ):
+
+        return []
+
+
     def initial_parameter_values( self ):
 
         return []
@@ -29,12 +35,19 @@ class ScalarFeatureMapsProbabilityDistribution( network.Layer ):
         patch_dimensions = dimensions - 2
         probability_axis_last = [ 0 ] + [ i + 2 for i in range( patch_dimensions ) ] + [ 1 ]
         return inputs.dimshuffle( probability_axis_last )
+    
         
 
 
 #---------------------------------------------------------------------------------------------------
 
 class Softmax( network.Layer ) :
+
+
+    @property
+    def parameter_names( self ):
+
+        return []
 
 
     def initial_parameter_values( self ) :
@@ -94,6 +107,12 @@ class DenseLayer( network.Layer ) :
     def biases_shape( self ) :
 
         return self.__weights_shape[ 1 ]
+
+
+    @property
+    def parameter_names( self ):
+
+        return [ 'W', 'b' ]
 
 
     def initial_parameter_values( self ) :
@@ -174,6 +193,12 @@ class ConvolutionalLayer( network.Layer ) :
     def activation( self ) :
 
         return self.__activation
+
+
+    @property
+    def parameter_names( self ):
+
+        return [ 'K', 'b' ]
 
 
     def initial_parameter_values( self ) :
@@ -275,6 +300,12 @@ class PoolingLayer( network.Layer ):
     def pooling_type( self ):
 
         return self.__pooling_type
+
+
+    @property
+    def parameter_names( self ):
+
+        raise []
 
 
     def initial_parameter_values( self ):

@@ -31,12 +31,18 @@ class Layer( object ) :
 
     def graph( self, parameters, inputs ) :
 
-        raise NotImplementedError
+        raise NotImplementedError()
 
 
     def initial_parameter_values( self ) :
 
-        raise NotImplementedError
+        raise NotImplementedError()
+
+
+    @property
+    def parameter_names( self ):
+
+        raise NotImplementedError()
 
 
 
@@ -125,9 +131,13 @@ class Model( object ) :
 
     def __init__( self, architecture, learned_parameter_values = None, seed = 42 ) :
 
-        initial_values = (
-            learned_parameter_values if learned_parameter_values is not None
-            else architecture.initial_parameter_values( seed ) )
+        if not learned_parameter_values:
+            initial_values = architecture.initial_parameter_values( seed )
+        else:
+            initial_values = [
+                [ ( p, learned_parameter_values[ f'{i}:{p}' ] )
+                  for p in layer.parameter_names ]
+                for i, layer in enumerate( architecture.layers ) ]
 
         parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ]
                        for subset in initial_values ]

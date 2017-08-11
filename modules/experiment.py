@@ -25,6 +25,7 @@ from numpy import logical_not as negation
 
 import data
 import labels
+import network
 import optimisation
 import output
 import results
@@ -72,7 +73,7 @@ class ExperimentDefinition( object ):
         raise NotImplementedError()
 
 
-    def model( self ):
+    def architecture( self ):
 
         raise NotImplementedError() 
 
@@ -90,12 +91,21 @@ class SegmentationExperiment( object ):
 
 
 
-    def __init__( self, definition, input_path, output_path, log = output.Log( sys.stdout ) ):
+    def __init__(
+            self,
+            definition,
+            input_path,
+            output_path,
+            initial_epoch = 0,
+            model_seed = 42,
+            log = output.Log( sys.stdout ) ):
         
         self.__log = log
         self.__input_path = input_path
         self.__output_path = output_path + '/' + definition.experiment_id
         self.__definition = definition
+        self.__initial_epoch = initial_epoch
+        self.__model_seed = model_seed
 
         self.__model = None
         self.__optimiser = None
@@ -122,7 +132,18 @@ class SegmentationExperiment( object ):
 
         if not self.__model:
             self.log.entry( 'constructing model' )
-            self.__model = self.definition.model()
+            model_seed = self.__model_seed
+            architecture = self.definition.architecture()
+
+            if self.__initial_epoch > 0:
+                previous_epoch = self.__initial_epoch - 1 
+                experiment_id = self.__definition.experiment_id
+                archive = results.Archive( self.__output_path, experiment_id, self.__log )
+                model_parameters = archive.read_model_parameters( epoch = previous_epoch )
+                self.__model = network.Model( architecture, model_parameters, seed = model_seed )
+
+            else:
+                self.__model = network.Model( architecture, seed = model_seed )
 
         return self.__model
 
@@ -166,6 +187,7 @@ class SegmentationExperiment( object ):
         return TrainingCostMonitor(
             self.output_path,
             self.definition, 
+            initial_epoch = self.__initial_epoch,
             log = self.log )
 
 
@@ -238,7 +260,8 @@ class SegmentationExperiment( object ):
             training_set,
             validation_set,
             training_cost_monitor,
-            validation_results_monitor )
+            validation_results_monitor,
+            initial_epoch = self.__initial_epoch )
 
         self.log.subsection( "constructing report" )
         experiment_results = validation_results_monitor.results_for_most_recent_epoch
@@ -299,15 +322,24 @@ class SegmentationByDenseInferenceExperiment( SegmentationExperiment ):
 
 class TrainingCostMonitor( optimisation.Monitor ):
 
-    def __init__( self, output_path, experiment_definition, log = output.Log() ):
-
-        self.__output_path = output_path
-        self.__experiment_definition = experiment_definition
+    def __init__( self, output_path, experiment_definition, initial_epoch = 0, log = output.Log() ):
 
         experiment_id = experiment_definition.experiment_id
         self.__archive = results.Archive( output_path, experiment_id, log )
-        self.__costs = []
-        self.__times = []
+
+        if initial_epoch > 0:
+
+            read_single_array_output = self.__archive.read_single_array_output
+            self.__costs = list( read_single_array_output( 'costs', epoch = initial_epoch - 1 ) )
+            self.__times = list( read_single_array_output( 'times', epoch = initial_epoch - 1 ) )
+
+            assert len( self.__costs ) == initial_epoch
+            assert len( self.__times ) == initial_epoch
+
+        else:
+
+            self.__costs = []
+            self.__times = []
 
 
     def on_epoch( self, epoch, model, costs, times ):

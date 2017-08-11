@@ -95,6 +95,11 @@ class Archive( object ):
         return array
 
 
+    def read_single_array_output( self, object_type, object_id = None, epoch = None ):
+        with self.read_array_output( object_type, object_id, epoch ) as data:
+            return data[ 'arr_0' ]
+
+
     def save_model_parameters( self, parameter_map, object_id = None, epoch = None ):
 
         if not os.path.exists( self.data_path ):
@@ -107,6 +112,13 @@ class Archive( object ):
         self.log.item( "saved " + object_type + " to " + filepath )
         return filepath
 
+
+    def read_model_parameters( self, object_id = None, epoch = None ):
+
+        filepath = self.saved_object_file_name( 'model', object_id, epoch ) + '.npz'
+        with numpy.load( filepath ) as model_archive:
+            self.log.item( "reading model from " + filepath )
+            return { k : model_archive[ k ] for k in model_archive }
 
 
 #---------------------------------------------------------------------------------------------------

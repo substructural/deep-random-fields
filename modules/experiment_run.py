@@ -3,6 +3,9 @@ import inspect
 import optparse
 import os
 import sys
+import traceback
+
+import ipdb
 
 import experiment
 import output
@@ -15,6 +18,9 @@ command_line = optparse.OptionParser( usage )
 command_line.add_option( '-i', '--input', action = 'store' )
 command_line.add_option( '-o', '--output', action = 'store' )
 command_line.add_option( '-e', '--epoch', action = 'store', type = 'int' )
+command_line.add_option( '-s', '--seed', action = 'store', type = 'int' )
+command_line.add_option( '-m', '--model-seed', action = 'store', type = 'int' )
+command_line.add_option( '-d', '--debug', action = 'store_false', default = False )
 
 #---------------------------------------------------------------------------------------------------
 
@@ -49,29 +55,42 @@ for experiment_to_run in experiments_to_run:
     try:
         experiment_name = os.path.basename( experiment_to_run.replace( '.py', '' ) )
         experiment_module = importlib.import_module( experiment_name )
+        log = output.Log( sys.stdout )
+
+        initial_epoch = options.epoch if options.epoch else 0
+        model_seed = options.model_seed if options.model_seed else 42
+        experiment_seed = options.seed if options.seed else 54
         experiment_instance = experiment.SegmentationByDenseInferenceExperiment(
             experiment_module.Definition(),
             options.input,
             options.output,
-            output.Log( sys.stdout ) )
+            initial_epoch = initial_epoch,
+            model_seed = model_seed,
+            log = log )
 
-        if command == 'train':
+        if command == 'training':
 
-            experiment_instance.run( seed = 42 ) 
+            experiment_instance.run( seed = experiment_seed ) 
 
         if command == 'report':
 
             epoch = options.epoch
             report.Report.generate( epoch, experiment_instance  )
 
-        if command == 'print':
+        if command == 'source':
 
-            source = inspect.getsource( type( experiment_instance ) )
+            source = inspect.getsource( type( experiment_instance.definition ) )
             print( source )
 
     except Exception as e:
 
-        print( f'\n\ncommand {command} failed for {experiment_name}\n\nerror:\n\n{e}\n\n' )
+        exception_type, exception_value, backtrace = sys.exc_info()
+        print( f'\n\ncommand {command} failed for {experiment_name}' )
+        print( f'\n\nerror:\n\n{e}\n' )
+        traceback.print_tb( backtrace )
+        if options.debug:
+            print( '\nentering debugger...\n\n' )
+            ipdb.set_trace()
 
 
 #---------------------------------------------------------------------------------------------------

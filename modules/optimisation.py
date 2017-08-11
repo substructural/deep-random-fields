@@ -278,7 +278,7 @@ class Optimiser( object ) :
             costs.append( cost )
 
             self.log.item( f"time: {batch_duration}" )
-            self.log.item( f"cost: {cost}" )
+            self.log.item( f"cost: {cost}\n" )
 
         monitor.on_epoch( epoch, model, costs, times )
         mean_cost = numpy.sum( costs ) / len( costs )
@@ -297,7 +297,8 @@ class Optimiser( object ) :
             optimisation_data,
             validation_data,
             optimisation_monitor,
-            validation_monitor ):
+            validation_monitor,
+            initial_epoch = 0 ):
 
         self.log.section( "constructing graph" )
         optimisation_start = datetime.now()
@@ -315,7 +316,7 @@ class Optimiser( object ) :
         self.log.section( "optimising model" )
         costs = []
 
-        for epoch in range( self.parameters.maximum_epochs ):
+        for epoch in range( initial_epoch, self.parameters.maximum_epochs ):
 
             self.iterate(
                 optimisation_step, "optimisation", epoch, optimisation_data, optimisation_monitor, model )
