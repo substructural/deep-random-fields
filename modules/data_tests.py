@@ -123,7 +123,7 @@ class DatasetTests( unittest.TestCase ):
             Mock.Aquisition( i, data.Subject( "S_" + str( i ), i % 2, None ), 20 + i, [] )
             for i in range( 0, 20 ) ]
 
-        dataset = data.Dataset( aquisitions, 10, 5, 5, 42 )
+        dataset = data.Dataset( aquisitions, 5, 5, 10, 42 )
         training_set = set( dataset.training_set )
         validation_set = set( dataset.validation_set )
         test_set = set( dataset.test_set )
