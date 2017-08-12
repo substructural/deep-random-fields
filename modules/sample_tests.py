@@ -14,7 +14,7 @@ import sample
 import output
 
 import debug
-import pdb
+import ipdb
 
 
 #---------------------------------------------------------------------------------------------------
@@ -558,18 +558,24 @@ class AccessorTests( unittest.TestCase ):
 
     def test_that_the_accessor_has_the_correct_length( self ):
 
-        n = 4
+        n = 3
         aquisitions = list( range( n ) )
 
+        k, j, i = ( 3, 2, 1 )
         d, h, w = ( 1, 2, 2 )
+        total_patch_count =  n * (k+1) * (j+1) * (i+1) 
+        patches_per_batch = 32
+        expected_batches = 3
+        assert total_patch_count == 72
+        
         parameters = ( sample.Parameters()
-                       .with_target_shape(( d, 2*h, 2*w ))
+                       .with_target_shape(( d + k, h + j, w + i ))
                        .with_patch_shape(( d, h, w ))
-                       .with_patch_count( 2 ) )
+                       .with_patch_count( patches_per_batch ) )
 
-        patch_offsets = numpy.array( list( range( 4 * 2 * 2 ) ) )
-        image_patches = numpy.array( list( range( 4 * 2 * 2 ) ) )
-        label_patches = image_patches + 1
+        patch_offsets = [ (1,)*32, (2,)*32, (3,)*8 ]
+        image_patches = [ (1,)*32, (2,)*32, (3,)*8 ]
+        label_patches = [ (1,)*32, (2,)*32, (3,)*8 ]
 
         accessor = AccessorUnderTest(
             aquisitions,
@@ -579,8 +585,8 @@ class AccessorTests( unittest.TestCase ):
             parameters )
 
         iterations = [ b for b in accessor ]
-        self.assertEqual( len( accessor ), 8 )
-        self.assertEqual( len( iterations ), 8 )
+        self.assertEqual( len( accessor ), expected_batches )
+        self.assertEqual( len( iterations ), expected_batches )
 
 
 
@@ -594,22 +600,22 @@ class AccessorTests( unittest.TestCase ):
 
         d, h, w = ( 1, 2, 2 )
         parameters = ( sample.Parameters()
-                       .with_target_shape(( d, 2*h, 2*w ))
+                       .with_target_shape(( d, h + 1, w + 1 ))
                        .with_patch_shape(( d, h, w ))
                        .with_patch_count( 2 ) )
 
         images = numpy.array(
             [ [ [ [ v*1000 + z*100 + y*10 + x
-                    for x in range(2*w) ] 
-                  for y in range(2*h) ]
+                    for x in range(w + 1) ] 
+                  for y in range(h + 1) ]
                 for z in range(d) ]
               for v in range(n) ] )
 
         patch_offsets = numpy.array(
             [ ( v, 0, y, x )
               for v in range( n )
-              for y in [ 0, h ]
-              for x in [ 0, w ] ]).reshape(( 8, 2, 4 ))
+              for y in [ 0, 1 ]
+              for x in [ 0, 1 ] ]).reshape(( 8, 2, 4 ))
 
         image_patches = numpy.array(
             [ [ images[ v, z, y:y+h, x:x+w ]
