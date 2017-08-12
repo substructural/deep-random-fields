@@ -78,7 +78,7 @@ class RMSPropLearningRate( LocalLearningRate ):
 
         gamma = self.mean_weighting
         eta = self.base_learning_rate
-        epsilon = 0.0001
+        epsilon = 1e-6
 
         initial_value = parameter.get_value()
         is_tensor = isinstance( initial_value, numpy.ndarray ) and ( initial_value.shape != () )
@@ -86,7 +86,7 @@ class RMSPropLearningRate( LocalLearningRate ):
 
         mean_squared_gradient = theano.shared( name = 'mean_squared_gradient', value = zero )
         squared_gradient = ( gamma * mean_squared_gradient ) + ( 1 - gamma )*( cost_gradient ** 2 )
-        rate = eta * theano.tensor.sqrt( squared_gradient + epsilon )
+        rate = eta / theano.tensor.sqrt( squared_gradient + epsilon )
 
         return rate, ( mean_squared_gradient, squared_gradient )
 
