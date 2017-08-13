@@ -27,6 +27,11 @@ class Mock:
         def initial_parameter_values( self ) :
             return [ ( 'W', self.initial_value ), ( 'b', 42.0 ) ]
 
+        @property
+        def parameter_names( self ):
+
+            return [ 'W', 'b' ]
+
         
 #---------------------------------------------------------------------------------------------------
 
@@ -72,16 +77,21 @@ class ModelTests( unittest.TestCase ) :
     def test_that_the_model_uses_the_learned_parameters_if_supplied( self ) :
 
         layer_count = 3
-        layers = [ Mock.Layer( i ) for i in range( 0, layer_count ) ]
+        layers = [ Mock.Layer( i ) for i in range( layer_count ) ]
         architecture = network.Architecture( layers, input_dimensions = 0 )
 
-        learned_parameters = [ [ ( 'W', 6.0 * 9 * i ), ( 'b', 56.0 ) ]
-                               for i in range( 0, layer_count ) ]
+        ws = [ ( 'W', 6.0 * 9 * i ) for i in range( layer_count ) ]
+        bs = [ ( 'b', 56.0 ) for i in range( layer_count ) ]
+
+        learned_parameters = {
+            f'{i}:{p}' : v
+            for i, ( p, v ) in ( list(enumerate(ws)) + list(enumerate(bs)) ) }
 
         model = network.Model( architecture, learned_parameters )
         actual_parameters = model.parameter_names_and_values
+        expected_parameters = [ [ ws[i], bs[i] ] for i in range( layer_count ) ]
 
-        self.assertEqual( actual_parameters, learned_parameters )
+        self.assertEqual( actual_parameters, expected_parameters )
 
             
     def test_that_the_model_computes_the_correct_outputs( self ) :
