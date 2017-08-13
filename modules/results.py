@@ -221,6 +221,7 @@ class SegmentationResults( object ):
 
         log.subsection( 'querying results path' )
 
+        margin = sample_parameters.margin
         reconstructed_shape = sample_parameters.reconstructed_shape
         file_names = os.listdir( self.archive.data_path )
 
@@ -230,6 +231,7 @@ class SegmentationResults( object ):
         query = re.compile( pattern )
         queries = [ ( name, query.match( name ) ) for name in file_names ]
         sources = [ ( name, int( matched.groups()[0] ) ) for name, matched in queries if matched ]
+        sources_sorted_by_id = sorted( sources, key = lambda s : s[1] )
 
         if not sources:
             raise Exception(
@@ -238,17 +240,17 @@ class SegmentationResults( object ):
                 f'  - path: {self.archive.data_path}' )
 
         log.entry( 'found:' )
-        for name, volume_id in sources:
+        for name, volume_id in sources_sorted_by_id:
 
             log.item( f'{name} ({volume_id})' )
 
-            volume = dataset.validation_set[ volume_id ].read_volume()
             predicted_distribution, offset = self.predicted_distribution( volume_id )
-            reference_labels = Images.extract( volume.labels, offset, reconstructed_shape )
+            volume = dataset.validation_set[ volume_id ].read_volume()
+            reference_labels = Images.extract( volume.labels, offset, reconstructed_shape, margin )
             reference_distribution = labels.dense_volume_indices_to_dense_volume_distribution(
                 reference_labels, self.class_count )
 
-            self.append( predicted_distribution, reference_distribution )
+            self.append( predicted_distribution, reference_distribution, volume_id )
     
 
     def append_and_save(
@@ -258,7 +260,8 @@ class SegmentationResults( object ):
             reference_distribution,
             offset_in_input ):
 
-        self.append( predicted_distribution, reference_distribution )
+        assert volume_id == offset_in_input[0]
+        self.append( predicted_distribution, reference_distribution, volume_id )
 
         # we do not save the reference as it assumed to exist already as part of the dataset
         data = {
@@ -268,8 +271,10 @@ class SegmentationResults( object ):
         self.__files.append( name )
 
 
-    def append( self, predicted_distribution, reference_distribution ):
+    def append( self, predicted_distribution, reference_distribution, volume_id ):
 
+        assert volume_id == len( self.__dice_scores )
+        assert volume_id == len( self.__confusion_matrices )
         assert predicted_distribution.shape == reference_distribution.shape
 
         distribution_to_labels = labels.dense_volume_distribution_to_dense_volume_indices
@@ -514,12 +519,12 @@ class Images:
 
 
     @staticmethod
-    def extract( data, offset, target_shape ):
+    def extract( data, offset, extracted_shape, margin = 0 ):
 
         return data[
-            offset[ 0 ] : offset[ 0 ] + target_shape[ 0 ],
-            offset[ 1 ] : offset[ 1 ] + target_shape[ 1 ],
-            offset[ 2 ] : offset[ 2 ] + target_shape[ 2 ] ]
+            offset[ 0 ] + margin : offset[ 0 ] + margin + extracted_shape[ 0 ],
+            offset[ 1 ] + margin : offset[ 1 ] + margin + extracted_shape[ 1 ],
+            offset[ 2 ] + margin : offset[ 2 ] + margin + extracted_shape[ 2 ] ]
 
 
     @staticmethod
