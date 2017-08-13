@@ -45,7 +45,7 @@ exit_on_error( not options.input, 'the input path argument is required' )
 command = arguments[0]
 experiments_to_run = arguments[1:]
 
-exit_on_error( command == 'report' and not options.epoch ,
+exit_on_error( command == 'report' and options.epoch is None,
                'the epoch argument is required for the report command' )
 
 #---------------------------------------------------------------------------------------------------
