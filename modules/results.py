@@ -270,6 +270,8 @@ class SegmentationResults( object ):
 
     def append( self, predicted_distribution, reference_distribution ):
 
+        assert predicted_distribution.shape == reference_distribution.shape
+
         distribution_to_labels = labels.dense_volume_distribution_to_dense_volume_indices
         predicted_labels = distribution_to_labels( predicted_distribution )
         reference_labels = distribution_to_labels( reference_distribution )

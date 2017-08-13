@@ -272,6 +272,9 @@ class Optimiser( object ) :
             batch_start = datetime.now()
             predicted_distribution, cost = step( images, distribution )
 
+            assert predicted_distribution.shape == distribution.shape
+            assert predicted_distribution.shape[0] == positions.shape[0]
+
             monitor.on_batch( epoch, batch, predicted_distribution, distribution, positions )
             batch_duration = ( datetime.now() - batch_start ).total_seconds()
             times.append( batch_duration )

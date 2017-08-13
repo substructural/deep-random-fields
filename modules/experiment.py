@@ -450,13 +450,17 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
             for i in range( completed_count ):
                 m = patch_count_per_volume * i
                 n = patch_count_per_volume * ( i + 1 )
-                offset = self.__positions[ m, 1: ]
-                volume_id = self.__positions[ m ][ 0 ]
+
+                volume_ids = self.__positions[ m:n, 0 ]
+                positions = self.__positions[ m:n, 1: ]
+                assert numpy.array_equal( positions[0], numpy.min( positions ) )
+                assert numpy.all( volume_ids == volume_ids[0] )
+
                 results_for_epoch.append_and_save(
-                    volume_id,
+                    volume_ids[0],
                     self.reconstructed_volume( self.__predicted[ m : n ] ),
                     self.reconstructed_volume( self.__reference[ m : n ] ),
-                    offset )
+                    positions[0] )
             
             block = numpy.s_[ 0 : completed_count * patch_count_per_volume ]
             self.__positions = numpy.delete( self.__positions, block, 0 )
