@@ -471,12 +471,15 @@ class SequentialPatchSet( PatchSet ):
 
         next_batch = SequentialPatchSet.volume_and_patch_index_for_batch( batch + 1, parameters )
         next_batch_starts_new_volume = next_batch[1] == 0
-        this_is_the_last_batch = next_batch[0] == len( aquisitions )
+        this_is_the_last_batch = next_batch[0] >= len( aquisitions )
         this_ends_at_boundary = this_is_the_last_batch or next_batch_starts_new_volume
 
-        last_volume = ( next_batch[0] - 1 ) if this_ends_at_boundary else next_batch[0]
-        last_volume_in_batch = last_volume - start_volume
+        last_volume = (
+            len(aquisitions) - 1 if this_is_the_last_batch else 
+            next_batch[0] - 1 if next_batch_starts_new_volume else
+            next_batch[0] )
 
+        last_volume_in_batch = last_volume - start_volume
         end_patch = parameters.patches_per_volume if this_ends_at_boundary else next_batch[1]
         end_in_batch = ( last_volume_in_batch, end_patch )
 
