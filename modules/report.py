@@ -274,17 +274,19 @@ class SourceData( object ):
 
 
     @staticmethod
-    def image_data_from_volumes( volumes, offsets, target_shape ):
+    def image_data_from_volumes( volumes, offsets, reconstructed_shape, margin ):
         
-        return { i : Images.extract( volumes[ i ].images, offsets[ i ], target_shape )
-                 for i in volumes }
+        return {
+            i : Images.extract( volumes[ i ].images, offsets[ i ], reconstructed_shape, margin )
+            for i in volumes }
 
 
     @staticmethod
-    def reference_labels_from_volumes( volumes, offsets, target_shape ):
+    def reference_labels_from_volumes( volumes, offsets, reconstructed_shape, margin ):
 
-        return { i : Images.extract( volumes[ i ].labels, offsets[ i ], target_shape )
-                 for i in volumes }
+        return {
+            i : Images.extract( volumes[ i ].labels, offsets[ i ], reconstructed_shape, margin )
+            for i in volumes }
 
 
     @staticmethod
@@ -330,6 +332,7 @@ class Report( object ):
         dataset = experiment.dataset
         sample_parameters = experiment.definition.sample_parameters
         reconstructed_shape = sample_parameters.reconstructed_shape
+        margin = sample_parameters.margin
 
         log.entry( 'collating metrics' )
         dice = results.statistics_for_mean_dice_score_per_volume
@@ -345,8 +348,10 @@ class Report( object ):
             results )
 
         log.entry( 'extracting data')
-        image_data = SourceData.image_data_from_volumes( volumes, offsets, reconstructed_shape )
-        reference = SourceData.reference_labels_from_volumes( volumes, offsets, reconstructed_shape )
+        image_data = SourceData.image_data_from_volumes(
+            volumes, offsets, reconstructed_shape, margin )
+        reference = SourceData.reference_labels_from_volumes(
+            volumes, offsets, reconstructed_shape, margin )
         predicted = SourceData.predicted_labels_from_distributions( distributions )
 
         log.entry( 'generating source section' )
