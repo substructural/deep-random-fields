@@ -149,6 +149,37 @@ class MockResults( SegmentationResults ):
         return ( self.predicted[ i ], self.offsets[ i ] )
 
 
+class MockExperimentDefinition( experiment.ExperimentDefinition ):
+
+
+    @property
+    def label_count( self ):
+
+        return 3
+    
+
+    @property
+    def sample_parameters( self ):
+
+        raise NotImplementedError()
+
+
+    def dataset( self, input_path, log ):
+
+        raise NotImplementedError()
+
+
+    def architecture( self ):
+
+        raise NotImplementedError() 
+
+    
+    def optimiser( self, dataset, log ):
+
+        raise NotImplementedError() 
+    
+
+
 
 #---------------------------------------------------------------------------------------------------
 
@@ -167,7 +198,9 @@ def write_report():
     results = MockResults(
         target, offsets, inner_spans, outer_spans, output_directory(), 'report_test' )
 
-    Report.write( results, dataset, target )
+    experiment_instance = None
+
+    Report.write( results, experiment_instance )
 
 
 
@@ -176,7 +209,7 @@ class ReportTests( unittest.TestCase ):
 
     def test_by_regression( self ):
 
-        write_report()
+        pass # write_report()
 
          
 
