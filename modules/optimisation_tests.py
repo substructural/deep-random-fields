@@ -136,8 +136,8 @@ class Mock :
             if self.verbosity > 1:
                 print( self.on_batch_arguments[ -1 ] )
 
-        def on_epoch( self, epoch, mean_cost, model ):
-            self.on_epoch_arguments.append(( epoch, mean_cost, model ))
+        def on_epoch( self, epoch, model, costs, times ):
+            self.on_epoch_arguments.append(( epoch, model, costs, times ))
             if self.verbosity > 0:
                 print( self.on_epoch_arguments[ -1 ] )
 
@@ -272,34 +272,54 @@ class OptimiserTests( unittest.TestCase ):
 
     def test_that_iterate_passes_correct_results_to_the_monitor( self ):
 
+        def array( *args ) : return numpy.array( args )
+
         model = network.Model( network.Architecture( [ Mock.LinearLayer( 2.0, 0.0 ) ], 1, 1 ) )
         updates = lambda model, cost : (
             [ ( p, p - 0.1 ) for layer in model.parameters for p in layer ] ) 
 
         optimiser = OptimiserUnderTest( updates )
-        validation_step = optimiser.validation_step( model )
+        validation_step = optimiser.optimisation_step( model )
 
         monitor = Mock.MonitorWhichRecordsCallsMadeToIt()
-        data = [ ( [2.0], [3.0], [(1,0)] ), ( [3.0], [4.5], [(1,1)] ), ( [4.0], [6.0], [(2,0)] ) ]
-        mean_cost = optimiser.iterate( validation_step, "validation", 42, data, monitor, model )
+        epoch = 42
+        data = [ ( array(2.0, 2.0), array(3.0, 3.0), array((1, 0), (1, 1)) ),
+                 ( array(3.0, 3.0), array(4.5, 4.5), array((1, 2), (1, 3)) ),
+                 ( array(4.0, 4.0), array(6.0, 6.0), array((2, 0), (2, 1)) ) ]
+        mean_cost = optimiser.iterate( validation_step, "validation", epoch, data, monitor, model )
         
         recorded_positions = numpy.array( [ p for (e, b, pd, rd, p) in monitor.on_batch_arguments ] )
         expected_positions = numpy.array( [ p for (x, y, p) in data ] )
         self.assertTrue( numpy.array_equal( recorded_positions, expected_positions ) )
         
+        predict = lambda i, x : (2.0 - i*0.1) * x + (0.0 - i*0.1)
         recorded_predictions = numpy.array( [ pd for ( e, b, pd, rd, p ) in monitor.on_batch_arguments ] )
-        expected_predictions = numpy.array( [ [ 2 * x[0] ] for ( x, y, p ) in data ] )
-        self.assertTrue( numpy.array_equal( recorded_predictions, expected_predictions ) )
+        expected_predictions = numpy.array( [ predict(i, x) for i, ( x, y, p ) in enumerate(data) ] )
+        self.assertTrue( numpy.allclose( recorded_predictions, expected_predictions, 1e-8 ) )
 
         recorded_distribution = numpy.array( [ rd for ( e, b, pd, rd, p ) in monitor.on_batch_arguments ] )
         expected_distribution = numpy.array( [ rd for ( x, rd, p ) in data ] )
         self.assertTrue( numpy.array_equal( recorded_distribution, expected_distribution ) )
 
-        recorded_mean_costs = [ c for ( e, c, m ) in monitor.on_epoch_arguments ]
-        expected_mean_cost = 1.5 # = 1/3 * ( 3-2 + 4.5-3 + 6-4 )
-        self.assertEqual( mean_cost, expected_mean_cost )
-        self.assertEqual( len( recorded_mean_costs ), 1 )
-        self.assertEqual( recorded_mean_costs[ 0 ], mean_cost )
+        recorded_epoch = monitor.on_epoch_arguments[ 0 ][ 0 ]
+        self.assertEqual( recorded_epoch, epoch )
+
+        recorded_model = monitor.on_epoch_arguments[ 0 ][ 1 ]
+        recorded_model_parameters = recorded_model.parameter_names_and_values
+        expected_model_parameters = [ [ ( 'W', array( 2.0 - 0.3 ) ), ( 'b', array( 0.0 - 0.3 ) ) ] ]
+        self.assertEqual( len( recorded_model_parameters ), 1 )
+        self.assertEqual( len( recorded_model_parameters[0] ), 2 )
+        for i in range( 2 ):
+            self.assertEqual( recorded_model_parameters[0][i][0], expected_model_parameters[0][i][0] )
+            self.assertTrue( numpy.allclose(
+                    recorded_model_parameters[0][i][1],
+                    expected_model_parameters[0][i][1],
+                    1e-8 ) )
+
+        recorded_costs = monitor.on_epoch_arguments[ 0 ][ 2 ]
+        expected_costs = expected_predictions[:,0] - expected_distribution[:,0]
+        self.assertTrue( numpy.allclose( recorded_costs, expected_costs, 1e-8 ) )
+        self.assertEqual( mean_cost, numpy.mean( recorded_costs ) )
 
 
     def test_that_optimise_until_converged_passes_the_correct_functor_data_and_monitor( self ):
