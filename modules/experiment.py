@@ -347,8 +347,13 @@ class TrainingCostMonitor( optimisation.Monitor ):
         assert len( self.__costs ) == epoch
         assert len( self.__times ) == epoch
 
-        self.__costs.append( costs )
-        self.__times.append( times )
+        def maybe_padded( xs, existing ):
+            target = len( existing[0] ) if existing else len( xs )
+            difference = target - len( xs )
+            return list( xs ) + [ 0.0 ] * difference
+
+        self.__costs.append( maybe_padded( costs, self.__costs ) )
+        self.__times.append( maybe_padded( times, self.__times ) )
         self.__archive.save_array_output( numpy.array( self.__costs ), 'costs', epoch = epoch )
         self.__archive.save_array_output( numpy.array( self.__times ), 'times', epoch = epoch )
 
@@ -453,14 +458,15 @@ class LabelAccumulationMonitor( optimisation.Monitor ):
 
                 volume_ids = self.__positions[ m:n, 0 ]
                 positions = self.__positions[ m:n, 1: ]
-                assert numpy.array_equal( positions[0], numpy.min( positions ) )
+                minimum_position = numpy.min( positions, axis = 0 )
+                assert numpy.array_equal( minimum_position, positions[0] )
                 assert numpy.all( volume_ids == volume_ids[0] )
 
                 results_for_epoch.append_and_save(
                     volume_ids[0],
                     self.reconstructed_volume( self.__predicted[ m : n ] ),
                     self.reconstructed_volume( self.__reference[ m : n ] ),
-                    positions[0] )
+                    self.__positions[ m ] )
             
             block = numpy.s_[ 0 : completed_count * patch_count_per_volume ]
             self.__positions = numpy.delete( self.__positions, block, 0 )

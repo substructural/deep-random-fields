@@ -221,7 +221,7 @@ class SegmentationResults( object ):
 
         log.subsection( 'querying results path' )
 
-        margin = sample_parameters.margin
+        margin = sample_parameters.window_margin
         reconstructed_shape = sample_parameters.reconstructed_shape
         file_names = os.listdir( self.archive.data_path )
 
@@ -466,13 +466,13 @@ class Images:
 
 
     @staticmethod
-    def sample_images( volume ):
+    def sample_images( volume, maybe_positions = None ):
 
-        positions = ( 0.25, 0.5, 0.75 )
+        positions = maybe_positions if maybe_positions else ( 0.3, 0.5, 0.7 )
         shape = numpy.array( volume.shape )
 
         offsets = numpy.array(
-            [ [ int( shape[i] * positions[j] )
+            [ [ int( ( shape[i] - 1 ) * positions[j] )
                 for j in range(3) ]
               for i in range(3)
             ] )

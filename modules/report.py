@@ -9,6 +9,8 @@ import inspect
 import os
 import os.path
 
+import numpy
+
 import labels
 import output
 from results import Images, Metrics, SegmentationResults
@@ -264,29 +266,35 @@ class SourceData( object ):
     def representative_distributions_and_offsets_for_metrics( metrics, results ):
 
         indices = set( index for metric in metrics for statistic, index in metric )
-        distribution_and_ofsets = {
+        distribution_and_offsets = {
             i: results.predicted_distribution( i ) for i in indices }
 
-        distributions = { i : d for i, (d, o) in distribution_and_ofsets.items() }
-        offsets = { i : o for i, (d, o) in distribution_and_ofsets.items() }
+        for i in distribution_and_offsets:
+            _, offset = distribution_and_offsets[ i ]
+            assert offset[ 0 ] == i
+
+        distributions = { i : d for i, (d, o) in distribution_and_offsets.items() }
+        offsets = { i : o for i, (d, o) in distribution_and_offsets.items() }
 
         return distributions, offsets
 
 
     @staticmethod
     def image_data_from_volumes( volumes, offsets, reconstructed_shape, margin ):
-        
-        return {
-            i : Images.extract( volumes[ i ].images, offsets[ i ], reconstructed_shape, margin )
-            for i in volumes }
+
+        def extract( i ):
+            return Images.extract( volumes[i].images, offsets[i][1:], reconstructed_shape, margin )
+
+        return { i : extract( i ) for i in volumes }
 
 
     @staticmethod
     def reference_labels_from_volumes( volumes, offsets, reconstructed_shape, margin ):
 
-        return {
-            i : Images.extract( volumes[ i ].labels, offsets[ i ], reconstructed_shape, margin )
-            for i in volumes }
+        def extract( i ):
+            return Images.extract( volumes[i].labels, offsets[i][1:], reconstructed_shape, margin ) 
+
+        return { i : extract( i ) for i in volumes }
 
 
     @staticmethod
@@ -294,7 +302,7 @@ class SourceData( object ):
 
         return { i : labels.dense_volume_distribution_to_dense_volume_indices( d )
                  for i, d in distributions.items() }
-    
+
 
     @staticmethod
     def costs_for_epoch( epoch, archive ):
@@ -332,7 +340,7 @@ class Report( object ):
         dataset = experiment.dataset
         sample_parameters = experiment.definition.sample_parameters
         reconstructed_shape = sample_parameters.reconstructed_shape
-        margin = sample_parameters.margin
+        margin = sample_parameters.window_margin
 
         log.entry( 'collating metrics' )
         dice = results.statistics_for_mean_dice_score_per_volume
