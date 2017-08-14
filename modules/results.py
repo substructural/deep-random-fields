@@ -58,23 +58,40 @@ class Archive( object ):
 
 
     @property
+    def archive_path( self ):
+
+        return self.data_path + "/" +  self.archive_name
+
+
+    @property
     def archive_name( self ):
 
         return self.__archive_name
 
+
+    def ensure_path( self ):
+
+        if not os.path.exists( self.archive_path ):
+            self.log.item( f"creating {self.archive_path}" )
+            os.mkdir( self.archive_path )
+
+        if not os.path.isdir( self.archive_path ):
+            raise Exception( f'{self.archive_path} exists, but is not a directory' )
+
         
     def saved_object_file_name( self, object_type, object_id = None, epoch = None ):
 
-        epoch_tag = "-" + str( epoch ) if epoch is not None else ""
+        epoch_tag = "-epoch-" + str( epoch ) if epoch is not None else ""
         object_tag = "-" + str( object_id ) if object_id is not None else ""
-        filename = self.archive_name + epoch_tag + "-" + object_type + object_tag
-        return self.data_path + "/" + filename
+        filename =  object_type + epoch_tag + object_tag
+        filepath = self.data_path + "/" +  self.archive_name
+
+        return filepath + "/" + filename
 
 
     def save_array_output( self, data, object_type, object_id = None, epoch = None ):
 
-        if not os.path.exists( self.data_path ):
-            os.mkdir( self.data_path )
+        self.ensure_path()
 
         filepath = self.saved_object_file_name( object_type, object_id, epoch ) + '.npz'
         if isinstance( data, dict ):
@@ -96,14 +113,14 @@ class Archive( object ):
 
 
     def read_single_array_output( self, object_type, object_id = None, epoch = None ):
+
         with self.read_array_output( object_type, object_id, epoch ) as data:
             return data[ 'arr_0' ]
 
 
     def save_model_parameters( self, parameter_map, object_id = None, epoch = None ):
 
-        if not os.path.exists( self.data_path ):
-            os.mkdir( self.data_path )
+        self.ensure_path()
 
         object_type = 'model'
         filepath = self.saved_object_file_name( object_type, object_id, epoch )
@@ -223,7 +240,7 @@ class SegmentationResults( object ):
 
         margin = sample_parameters.window_margin
         reconstructed_shape = sample_parameters.reconstructed_shape
-        file_names = os.listdir( self.archive.data_path )
+        file_names = os.listdir( self.archive.archive_path )
 
         pattern = os.path.basename(
             self.archive.saved_object_file_name( 'segmentation', '([0-9]+)', self.epoch ) )
@@ -246,7 +263,9 @@ class SegmentationResults( object ):
 
             predicted_distribution, offset = self.predicted_distribution( volume_id )
             volume = dataset.validation_set[ volume_id ].read_volume()
-            reference_labels = Images.extract( volume.labels, offset, reconstructed_shape, margin )
+            offset_in_volume = offset[ 1 : ]
+            reference_labels = Images.extract(
+                volume.labels, offset_in_volume, reconstructed_shape, margin )
             reference_distribution = labels.dense_volume_indices_to_dense_volume_distribution(
                 reference_labels, self.class_count )
 
@@ -275,7 +294,9 @@ class SegmentationResults( object ):
 
         assert volume_id == len( self.__dice_scores )
         assert volume_id == len( self.__confusion_matrices )
-        assert predicted_distribution.shape == reference_distribution.shape
+        #assert predicted_distribution.shape == reference_distribution.shape
+        if predicted_distribution.shape != reference_distribution.shape:
+            ipdb.set_trace()
 
         distribution_to_labels = labels.dense_volume_distribution_to_dense_volume_indices
         predicted_labels = distribution_to_labels( predicted_distribution )

@@ -102,7 +102,7 @@ class SegmentationExperiment( object ):
         
         self.__log = log
         self.__input_path = input_path
-        self.__output_path = output_path + '/' + definition.experiment_id
+        self.__output_path = output_path
         self.__definition = definition
         self.__initial_epoch = initial_epoch
         self.__model_seed = model_seed
