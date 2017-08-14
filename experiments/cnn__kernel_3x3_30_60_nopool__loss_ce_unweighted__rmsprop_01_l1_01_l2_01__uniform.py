@@ -47,7 +47,7 @@ class Definition( experiment.ExperimentDefinition ):
         return ( sample.Parameters()
                  .with_volume_count( 10 )
                  .with_window_margin( 3 )
-                 .with_target_shape(( 170, 200, 160 ))
+                 .with_target_shape(( 166, 196, 156 ))
                  .with_patch_shape(( 16, 16, 16 ))
                  .with_patch_count( 1500 )
                  .with_patch_stride( 10 ) )
