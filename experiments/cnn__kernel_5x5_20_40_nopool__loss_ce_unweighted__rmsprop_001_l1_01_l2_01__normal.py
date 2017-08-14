@@ -54,33 +54,31 @@ class Definition( experiment.ExperimentDefinition ):
 
 
     @staticmethod
-    def model():
+    def architecture():
 
         leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
-        architecture = network.Architecture(
-            [ layers.ConvolutionalLayer(  1, 16, ( 5, 5, 5 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 16, 32, ( 5, 5, 5 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 32,  4, ( 5, 5, 5 ), 1, leaky_relu ),
+        convolution = lambda i, o, k : layers.ConvolutionalLayer(
+            i, o, k, 1, leaky_relu, uniform_weights = False, orthogonal_weights = False )
+
+        return network.Architecture(
+            [ convolution(  1, 20, ( 5, 5, 5 ) ),
+              convolution( 20, 40, ( 5, 5, 5 ) ),
+              convolution( 40,  4, ( 5, 5, 5 ) ),
               layers.Softmax(),
               layers.ScalarFeatureMapsProbabilityDistribution()
             ],
             input_dimensions = 4,
             output_dimensions = 5 )
 
-        return network.Model( architecture, seed = 42 )
-
 
     def optimiser( self, dataset, log ):
 
         distribution_axis = 1
-        prior_distribution = data.Normalisation.class_distribution_in_data_subset(
-            dataset.training_set, self.label_count, log )
+        cost_function = costs.CategoricalCrossEntropyCost(
+            distribution_axis, weight_L1=0.01, weight_L2=0.01 )
 
-        cost_function = costs.WeightedCategoricalCrossEntropyCost(
-            prior_distribution, distribution_axis, weight_L1=0.01, weight_L2=0.01 )
-
-        learning_rate = learning_rates.RMSPropLearningRate( 0.005, 0.9 )
-        parameters = optimisation.Parameters( maximum_epochs=2 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.001, 0.9 )
+        parameters = optimisation.Parameters( maximum_epochs = 10 )
         return optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate, log )
 

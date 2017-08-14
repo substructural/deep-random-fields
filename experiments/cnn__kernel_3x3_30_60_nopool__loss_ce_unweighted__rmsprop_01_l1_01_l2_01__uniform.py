@@ -46,43 +46,39 @@ class Definition( experiment.ExperimentDefinition ):
 
         return ( sample.Parameters()
                  .with_volume_count( 10 )
-                 .with_window_margin( 5 )
+                 .with_window_margin( 3 )
                  .with_target_shape(( 170, 200, 160 ))
-                 .with_patch_shape(( 20, 20, 20 ))
-                 .with_patch_count( 1000 )
+                 .with_patch_shape(( 16, 16, 16 ))
+                 .with_patch_count( 1500 )
                  .with_patch_stride( 10 ) )
 
 
     @staticmethod
-    def model():
+    def architecture():
 
         leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
-        architecture = network.Architecture(
-            [ layers.ConvolutionalLayer(  1, 16, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 16, 16, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 16, 32, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 32, 32, ( 3, 3, 3 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 32,  4, ( 3, 3, 3 ), 1, leaky_relu ),
+        convolution = lambda i, o, k : layers.ConvolutionalLayer(
+            i, o, k, 1, leaky_relu, uniform_weights = False, orthogonal_weights = False )
+
+        return network.Architecture(
+            [ convolution(  1, 30, ( 3, 3, 3 ) ),
+              convolution( 30, 60, ( 3, 3, 3 ) ),
+              convolution( 60,  4, ( 3, 3, 3 ) ),
               layers.Softmax(),
               layers.ScalarFeatureMapsProbabilityDistribution()
             ],
             input_dimensions = 4,
             output_dimensions = 5 )
 
-        return network.Model( architecture, seed = 42 )
-
 
     def optimiser( self, dataset, log ):
 
         distribution_axis = 1
-        prior_distribution = data.Normalisation.class_distribution_in_data_subset(
-            dataset.training_set, self.label_count, log )
+        cost_function = costs.CategoricalCrossEntropyCost(
+            distribution_axis, weight_L1=0.01, weight_L2=0.01 )
 
-        cost_function = costs.WeightedCategoricalCrossEntropyCost(
-            prior_distribution, distribution_axis, weight_L1=0.01, weight_L2=0.01 )
-
-        learning_rate = learning_rates.RMSPropLearningRate( 1e-3, 0.9 )
-        parameters = optimisation.Parameters( maximum_epochs=1 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.001, 0.9 )
+        parameters = optimisation.Parameters( maximum_epochs = 6 )
         return optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate, log )
 

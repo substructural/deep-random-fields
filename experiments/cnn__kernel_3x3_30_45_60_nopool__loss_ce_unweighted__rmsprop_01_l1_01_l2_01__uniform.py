@@ -46,28 +46,30 @@ class Definition( experiment.ExperimentDefinition ):
 
         return ( sample.Parameters()
                  .with_volume_count( 10 )
-                 .with_window_margin( 6 )
-                 .with_target_shape(( 172, 202, 162 ))
-                 .with_patch_shape(( 22, 22, 22 ))
-                 .with_patch_count( 2000 )
+                 .with_window_margin( 4 )
+                 .with_target_shape(( 170, 200, 160 ))
+                 .with_patch_shape(( 16, 16, 16 ))
+                 .with_patch_count( 1500 )
                  .with_patch_stride( 10 ) )
 
 
     @staticmethod
-    def model():
+    def architecture():
 
         leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
-        architecture = network.Architecture(
-            [ layers.ConvolutionalLayer(  1, 16, ( 5, 5, 5 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 16, 32, ( 5, 5, 5 ), 1, leaky_relu ),
-              layers.ConvolutionalLayer( 32,  4, ( 5, 5, 5 ), 1, leaky_relu ),
+        convolution = lambda i, o, k : layers.ConvolutionalLayer(
+            i, o, k, 1, leaky_relu, uniform_weights = False, orthogonal_weights = False )
+
+        return network.Architecture(
+            [ convolution(  1, 30, ( 3, 3, 3 ) ),
+              convolution( 30, 45, ( 3, 3, 3 ) ),
+              convolution( 45, 60, ( 3, 3, 3 ) ),
+              convolution( 60,  4, ( 3, 3, 3 ) ),
               layers.Softmax(),
               layers.ScalarFeatureMapsProbabilityDistribution()
             ],
             input_dimensions = 4,
             output_dimensions = 5 )
-
-        return network.Model( architecture, seed = 42 )
 
 
     def optimiser( self, dataset, log ):
@@ -76,8 +78,8 @@ class Definition( experiment.ExperimentDefinition ):
         cost_function = costs.CategoricalCrossEntropyCost(
             distribution_axis, weight_L1=0.01, weight_L2=0.01 )
 
-        learning_rate = learning_rates.RMSPropLearningRate( 0.005, 0.9 )
-        parameters = optimisation.Parameters( maximum_epochs=2 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.001, 0.9 )
+        parameters = optimisation.Parameters( maximum_epochs = 6 )
         return optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate, log )
 

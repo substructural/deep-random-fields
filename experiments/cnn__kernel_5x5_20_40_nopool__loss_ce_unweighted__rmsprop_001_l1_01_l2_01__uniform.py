@@ -54,23 +54,21 @@ class Definition( experiment.ExperimentDefinition ):
 
 
     @staticmethod
-    def model():
+    def architecture():
 
         leaky_relu = activation.LeakyRectifiedLinearUnit( 0.1 )
         convolution = lambda i, o, k : layers.ConvolutionalLayer(
-            i, o, k, 1, leaky_relu, uniform_weights = True, orthogonal_weights = True )
+            i, o, k, 1, leaky_relu, uniform_weights = True, orthogonal_weights = False )
 
-        architecture = network.Architecture(
-            [ convolution(  1, 16, ( 5, 5, 5 ) ),
-              convolution( 16, 32, ( 5, 5, 5 ) ),
-              convolution( 32,  4, ( 5, 5, 5 ) ),
+        return network.Architecture(
+            [ convolution(  1, 20, ( 5, 5, 5 ) ),
+              convolution( 20, 40, ( 5, 5, 5 ) ),
+              convolution( 40,  4, ( 5, 5, 5 ) ),
               layers.Softmax(),
               layers.ScalarFeatureMapsProbabilityDistribution()
             ],
             input_dimensions = 4,
             output_dimensions = 5 )
-
-        return network.Model( architecture, seed = 42 )
 
 
     def optimiser( self, dataset, log ):
@@ -79,8 +77,8 @@ class Definition( experiment.ExperimentDefinition ):
         cost_function = costs.CategoricalCrossEntropyCost(
             distribution_axis, weight_L1=0.01, weight_L2=0.01 )
 
-        learning_rate = learning_rates.RMSPropLearningRate( 0.005, 0.9 )
-        parameters = optimisation.Parameters( maximum_epochs=2 )
+        learning_rate = learning_rates.RMSPropLearningRate( 0.001, 0.9 )
+        parameters = optimisation.Parameters( maximum_epochs = 10 )
         return optimisation.StochasticGradientDescent(
             parameters, cost_function, learning_rate, log )
 
