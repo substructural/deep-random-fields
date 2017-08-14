@@ -208,7 +208,7 @@ class ConvolutionalLayer( network.Layer ) :
         inputs = self.input_feature_maps + N.prod( self.kernel_shape )
 
         if self.__uniform_weights:
-            span = N.sqrt( 6.0 / ( inputs + outputs ) )
+            span = N.sqrt( 2.0 / ( inputs + outputs ) )
             weights = N.random.uniform( -span, +span, shape ).astype( FloatType )
             biases = N.random.uniform( 0, 0.1, outputs ).astype( FloatType )
 
@@ -327,5 +327,26 @@ class PoolingLayer( network.Layer ):
         return pool( inputs, self.factor, stride=self.stride, mode=mode, ignore_border=True )
         
     
+
+#---------------------------------------------------------------------------------------------------
+
+class Calculator:
+
+
+    @staticmethod
+    def parameters( kernel_size, layer_sizes, classes, verbose = False ):
+
+        k = kernel_size ** 3
+        fs = [ 1 ] + layer_sizes + [ classes ]
+        cs = [ fs[i] * fs[i+1] for i in range( len( fs ) - 1 ) ]
+        ps = [ c * k for c in cs ]
+        total = sum( ps )
+        if verbose:
+            print( f'output feature maps: {fs}' )
+            print( f'combined feature map: {cs}' )
+            print( f'parameters per layer: {ps}' )
+            print( f'parameters in total: {total}' )
+        return total
+
 
 #---------------------------------------------------------------------------------------------------
