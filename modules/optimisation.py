@@ -29,10 +29,10 @@ class Parameters( object ):
             weight_L1 = 0.0,
             weight_L2 = 0.0,
             weight_decay = 0.0,
-            cost_sample_size = 3,
-            recent_cost_sample_size = 2,
+            cost_sample_size = 5,
+            recent_cost_sample_size = 3,
             convergence_threshold = 1e-5,
-            maximum_epochs = 16 ):
+            maximum_epochs = 10 ):
 
         self.__learning_rate = learning_rate
         self.__weight_L1 = weight_L1

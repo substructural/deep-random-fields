@@ -18,9 +18,10 @@ command_line = optparse.OptionParser( usage )
 command_line.add_option( '-i', '--input', action = 'store' )
 command_line.add_option( '-o', '--output', action = 'store' )
 command_line.add_option( '-e', '--epoch', action = 'store', type = 'int' )
+command_line.add_option( '-t', '--transfer-layers', action = 'store', type = 'int', default = 0 )
 command_line.add_option( '-s', '--seed', action = 'store', type = 'int' )
 command_line.add_option( '-m', '--model-seed', action = 'store', type = 'int' )
-command_line.add_option( '-d', '--debug', action = 'store_false', default = False )
+command_line.add_option( '-d', '--debug', action = 'store_true', default = False )
 
 #---------------------------------------------------------------------------------------------------
 
@@ -65,6 +66,7 @@ for experiment_to_run in experiments_to_run:
             options.input,
             options.output,
             initial_epoch = initial_epoch,
+            transfer_layers = options.transfer_layers,
             model_seed = model_seed,
             log = log )
 

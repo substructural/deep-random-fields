@@ -13,7 +13,9 @@ import theano.tensor
 import numpy as N
 import numpy.random
 
+import output
 
+import ipdb
 
 #---------------------------------------------------------------------------------------------------
 
@@ -129,18 +131,78 @@ class Model( object ) :
     '''
 
 
-    def __init__( self, architecture, learned_parameter_values = None, seed = 42 ) :
+    @staticmethod
+    def verify_parameter_values( parameter_values, default_values, log = output.Log() ):
 
-        if not learned_parameter_values:
-            initial_values = architecture.initial_parameter_values( seed )
-        else:
-            initial_values = [
-                [ ( p, learned_parameter_values[ f'{i}:{p}' ] )
-                  for p in layer.parameter_names ]
-                for i, layer in enumerate( architecture.layers ) ]
+        def assert_equal( a, b, f ):
+            if a != b:
+                m = f'invalid {f} {a}, expected {b}'
+                log.item( m )
+                raise Exception( m )
+
+        assert_equal( len( parameter_values ), len( default_values ), f'input length' )
+
+        for i, (learned_layer, default_layer) in enumerate(zip(parameter_values, default_values)):
+
+            assert_equal( len( learned_layer ), len( default_layer ), f'layer {i} length' )
+
+            for ( ln, lv ), ( dn, dv ) in zip( learned_layer, default_layer ):
+                assert_equal( ln, dn, f'layer {i}, parameter name' )
+                assert_equal( lv.shape, dv.shape, f'layer {i}, parameter {ln} shape' )
+                log.item( f'verified layer {i} parameter {ln} {lv.shape}' )
+
+        
+    @staticmethod
+    def read( learned_parameter_values, architecture, layers = None, log = output.Log() ):
+
+        def name_and_value( i, p ):
+            log.item( f'reading layer {i}, parameter {p}' )
+            key =  f'{i}:{p}' 
+            if key in learned_parameter_values:
+                return ( p, learned_parameter_values[ key ] )
+            else:
+                message =  f'layer {i}, parameter {p}, key {key} is missing' 
+                log.item( 'error: ' + message )
+                raise Exception( message )
+
+        end_layer = layers if layers else len( architecture.layers ) 
+        learned_values = [
+            [ name_and_value( i, p ) for p in layer.parameter_names ]
+            for i, layer in enumerate( architecture.layers[ 0 : end_layer ] ) ]
+
+        return learned_values
+
+
+    @staticmethod
+    def transfer( existing_model, default_values, architecture, layers, log = output.Log() ):
+
+        transfer_values = Model.read( existing_model, architecture, layers, log )
+        combined_values = transfer_values + default_values[ len( transfer_values ) : ]
+        log.item( f'transferred {len( transfer_values )} out of {len( combined_values )}' )
+        return combined_values
+
+
+    def __init__(
+            self,
+            architecture,
+            existing_model = None,
+            transfer = 0,
+            seed = 42,
+            log = output.Log() ) :
+
+        assert existing_model or not transfer
+        
+        defaults = architecture.initial_parameter_values( seed )
+        values = (
+            Model.transfer( existing_model, defaults, architecture, transfer, log ) if transfer else
+            Model.read( existing_model, architecture, log = log ) if existing_model else
+            defaults ) 
+
+        if existing_model:
+            Model.verify_parameter_values( values, defaults, log )
 
         parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ]
-                       for subset in initial_values ]
+                       for subset in values ]
 
         input_broadcast_pattern = ( False, ) * architecture.input_dimensions
         input_type = T.tensor.TensorType( FloatType, input_broadcast_pattern )

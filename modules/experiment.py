@@ -98,6 +98,7 @@ class SegmentationExperiment( object ):
             output_path,
             initial_epoch = 0,
             model_seed = 42,
+            transfer_layers = 0,
             log = output.Log( sys.stdout ) ):
         
         self.__log = log
@@ -105,6 +106,7 @@ class SegmentationExperiment( object ):
         self.__output_path = output_path
         self.__definition = definition
         self.__initial_epoch = initial_epoch
+        self.__transfer_layers = transfer_layers
         self.__model_seed = model_seed
 
         self.__model = None
@@ -140,7 +142,12 @@ class SegmentationExperiment( object ):
                 experiment_id = self.__definition.experiment_id
                 archive = results.Archive( self.__output_path, experiment_id, self.__log )
                 model_parameters = archive.read_model_parameters( epoch = previous_epoch )
-                self.__model = network.Model( architecture, model_parameters, seed = model_seed )
+                self.__model = network.Model(
+                    architecture,
+                    model_parameters,
+                    transfer = self.__transfer_layers,
+                    seed = model_seed,
+                    log = self.log )
 
             else:
                 self.__model = network.Model( architecture, seed = model_seed )
