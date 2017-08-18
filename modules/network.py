@@ -199,8 +199,13 @@ class Model( object ) :
             defaults ) 
 
         if existing_model:
+            model_type = 'transferred' if transfer else 'existing'
+            log.entry( f'verifying {model_type} model' )
             Model.verify_parameter_values( values, defaults, log )
+        else:
+            log.entry( 'completed random initialisation' )
 
+        log.entry( 'constructing learnable parameters' )
         parameters = [ [ T.shared( name = n, value = v ) for n, v in subset ]
                        for subset in values ]
 
@@ -208,6 +213,7 @@ class Model( object ) :
         input_type = T.tensor.TensorType( FloatType, input_broadcast_pattern )
         inputs = input_type( 'X' )
 
+        log.entry( 'constructing forward network graph' )
         outputs = architecture.graph( parameters, inputs )
 
         label_broadcast_pattern = ( False, ) * architecture.output_dimensions

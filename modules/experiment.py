@@ -133,24 +133,28 @@ class SegmentationExperiment( object ):
     def model( self ):
 
         if not self.__model:
-            self.log.entry( 'constructing model' )
+
+            self.log.entry( 'assembling model parameters' )
+            initial_epoch = self.__initial_epoch
+            transfer_layers = self.__transfer_layers
             model_seed = self.__model_seed
             architecture = self.definition.architecture()
+            experiment_id = self.definition.experiment_id
+            archive = results.Archive( self.__output_path, experiment_id, self.__log )
 
-            if self.__initial_epoch > 0:
-                previous_epoch = self.__initial_epoch - 1 
-                experiment_id = self.__definition.experiment_id
-                archive = results.Archive( self.__output_path, experiment_id, self.__log )
-                model_parameters = archive.read_model_parameters( epoch = previous_epoch )
-                self.__model = network.Model(
-                    architecture,
-                    model_parameters,
-                    transfer = self.__transfer_layers,
-                    seed = model_seed,
-                    log = self.log )
+            assert not ( initial_epoch and transfer_layers )
 
-            else:
-                self.__model = network.Model( architecture, seed = model_seed )
+            model_parameters = (
+                archive.read_model_parameters( epoch = initial_epoch - 1 ) if initial_epoch > 0 else
+                archive.read_model_parameters( object_id = 'transfer' ) if transfer_layers > 0 else
+                None )
+
+            self.__model = network.Model(
+                architecture,
+                existing_model = model_parameters,
+                transfer = transfer_layers,
+                seed = model_seed,
+                log = self.log )
 
         return self.__model
 
@@ -260,6 +264,8 @@ class SegmentationExperiment( object ):
         validation_results_monitor = self.validation_result_monitor()
         training_cost_monitor = self.training_cost_monitor()
         optimiser = self.optimiser
+
+        self.log.subsection( "constructing model" )
         model = self.model
 
         optimiser.optimise_until_converged(
@@ -268,7 +274,8 @@ class SegmentationExperiment( object ):
             validation_set,
             training_cost_monitor,
             validation_results_monitor,
-            initial_epoch = self.__initial_epoch )
+            initial_epoch = self.__initial_epoch,
+            constant_layers = self.__transfer_layers )
 
         self.log.subsection( "constructing report" )
         experiment_results = validation_results_monitor.results_for_most_recent_epoch

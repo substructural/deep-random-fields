@@ -231,17 +231,17 @@ class Optimiser( object ) :
         return self.__learning_rate
 
 
-    def updates( self, model, cost ):
+    def updates( self, model, cost, constant_layers = 0 ):
 
-        raise NotImplementedError
+        raise NotImplementedError()
     
 
-    def optimisation_step( self, model ):
+    def optimisation_step( self, model, constant_layers = 0 ):
 
         cost = self.cost_function( model.outputs, model.labels, model.parameters )
         inputs = [ model.inputs, model.labels ]
         outputs = [ model.outputs, cost ]
-        updates = self.updates( model, cost )
+        updates = self.updates( model, cost, constant_layers )
 
         self.log.entry( "compiling optimisation step" )
         return theano.function( inputs, outputs, updates = updates, allow_input_downcast = True )
@@ -301,16 +301,17 @@ class Optimiser( object ) :
             validation_data,
             optimisation_monitor,
             validation_monitor,
-            initial_epoch = 0 ):
+            initial_epoch = 0,
+            constant_layers = 0 ):
 
-        self.log.section( "constructing graph" )
+        self.log.section( "optimiser initialisation" )
         optimisation_start = datetime.now()
 
         self.log.entry( "constructing validation graph" )
         validation_step = self.validation_step( model )
 
         self.log.entry( "constructing optimisation graph" )
-        optimisation_step = self.optimisation_step( model )
+        optimisation_step = self.optimisation_step( model, constant_layers )
 
         graph_duration = ( datetime.now() - optimisation_start ).total_seconds()
         self.log.entry( f"graph construction time: {graph_duration}" )
@@ -349,10 +350,15 @@ class Optimiser( object ) :
 class StochasticGradientDescent( Optimiser ) :
 
 
-    def updates( self, model, cost ):
+    def updates( self, model, cost, constant_layers = 0 ):
 
-        parameters = [ p for subset in model.parameters for p in subset ]
+        learnable = model.parameters[ constant_layers : ]
+        parameters = [ p for subset in learnable for p in subset ]
         index = list( range( len( parameters ) ) )
+        self.log.item( f'layers: {len(model.parameters)}' )
+        self.log.item( f'constant layers: {constant_layers}' )
+        self.log.item( f'learnable layers: {len(learnable)}' )
+        self.log.item( f'learnable parameters: {len(parameters)}' )
 
         gradient = lambda p, c: T.grad( c, wrt=p, disconnected_inputs='ignore' )
         gradients = [ gradient( p, cost ) for p in parameters ]
