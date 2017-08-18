@@ -114,6 +114,11 @@ class SegmentationExperiment( object ):
         self.__dataset = None
 
 
+    def archive( self ):
+
+        return results.Archive( self.__output_path, self.definition.experiment_id, self.__log )
+        
+
     @property
     def definition( self ):
 

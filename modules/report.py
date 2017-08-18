@@ -318,6 +318,17 @@ class Report( object ):
 
 
     @staticmethod
+    def results_only( epoch, experiment ):
+
+        definition = experiment.definition
+        results = SegmentationResults(
+            experiment.output_path, definition.experiment_id, epoch, definition.label_count )
+
+        results.restore( experiment.dataset, definition.sample_parameters, experiment.log )
+        results.persist()
+
+
+    @staticmethod
     def generate( epoch, experiment ):
 
         definition = experiment.definition

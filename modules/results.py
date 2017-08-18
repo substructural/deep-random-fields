@@ -315,6 +315,20 @@ class SegmentationResults( object ):
             self.__confusion_matrices, [confusion_matrix], axis = 0 )
 
 
+    def persist( self ):
+
+        dice_per_class = [
+            ( f'dice_for_class_{i}', self.dice_scores_per_class[ :, i ] )
+            for i in range( self.__class_count ) ]
+
+        mean_dice = ( 'mean_dice', numpy.mean( self.dice_scores_per_class, axis=1 ) )
+        confusion = ( 'confusion', numpy.sum( self.__confusion_matrices, axis = 0 ) )
+
+        data = dict( dice_per_class + [ mean_dice, confusion ] )
+        self.archive.save_array_output( data, 'results', epoch = self.epoch )
+
+
+
 #---------------------------------------------------------------------------------------------------
 
 
